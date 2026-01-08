@@ -8,6 +8,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"devir/internal/config"
+	"devir/internal/daemon"
 	"devir/internal/mcp"
 	"devir/internal/runner"
 	"devir/internal/tui"
@@ -54,9 +55,31 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Get socket path based on config directory
+	socketPath := daemon.SocketPath(cfg.RootDir)
+
 	// MCP mode
 	if mcpMode {
-		mcpServer := mcp.New(cfg, Version)
+		runMCPMode(cfg, socketPath)
+		return
+	}
+
+	// TUI mode
+	runTUIMode(cfg, socketPath)
+}
+
+func runMCPMode(cfg *config.Config, socketPath string) {
+	// Check if daemon already exists
+	if daemon.Exists(socketPath) {
+		// Connect to existing daemon
+		client, err := daemon.Connect(socketPath)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to connect to daemon: %v\n", err)
+			os.Exit(1)
+		}
+		defer client.Close()
+
+		mcpServer := mcp.NewWithClient(cfg, client, Version)
 		if err := mcpServer.Run(); err != nil {
 			fmt.Fprintf(os.Stderr, "MCP error: %v\n", err)
 			os.Exit(1)
@@ -64,7 +87,30 @@ func main() {
 		return
 	}
 
-	// TUI mode
+	// Start new daemon + MCP
+	d := daemon.New(cfg, socketPath)
+	if err := d.Start(); err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to start daemon: %v\n", err)
+		os.Exit(1)
+	}
+	defer d.Stop()
+
+	// Connect as client
+	client, err := daemon.Connect(socketPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to connect to daemon: %v\n", err)
+		os.Exit(1)
+	}
+	defer client.Close()
+
+	mcpServer := mcp.NewWithClient(cfg, client, Version)
+	if err := mcpServer.Run(); err != nil {
+		fmt.Fprintf(os.Stderr, "MCP error: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+func runTUIMode(cfg *config.Config, socketPath string) {
 	services := flag.Args()
 	if len(services) == 0 {
 		services = cfg.Defaults
@@ -83,11 +129,43 @@ func main() {
 		}
 	}
 
-	// Create runner
-	r := runner.New(cfg, services, filter, exclude)
+	// Check if daemon already exists
+	if daemon.Exists(socketPath) {
+		// Connect to existing daemon (services already running)
+		client, err := daemon.Connect(socketPath)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to connect to daemon: %v\n", err)
+			os.Exit(1)
+		}
+		defer client.Close()
+
+		// Start TUI with client
+		p := tea.NewProgram(
+			tui.NewWithClient(client, services, cfg),
+			tea.WithAltScreen(),
+			tea.WithMouseCellMotion(),
+		)
+
+		if _, err := p.Run(); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+
+	// No existing daemon - start new daemon + TUI
+	d := daemon.New(cfg, socketPath)
+	if err := d.Start(); err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to start daemon: %v\n", err)
+		os.Exit(1)
+	}
+	defer d.Stop()
 
 	// Check for ports in use
+	r := runner.New(cfg, services, filter, exclude)
 	portsInUse := r.CheckPorts()
+	killPorts := false
+
 	if len(portsInUse) > 0 {
 		fmt.Println("\n⚠️  Aşağıdaki portlar zaten kullanımda:")
 		for name, port := range portsInUse {
@@ -99,20 +177,28 @@ func main() {
 		_, _ = fmt.Scanln(&answer)
 
 		if answer == "y" || answer == "Y" {
-			for name, port := range portsInUse {
-				if err := r.KillPort(port); err != nil {
-					fmt.Printf("   ✗ %s (port %d) kapatılamadı: %v\n", name, port, err)
-				} else {
-					fmt.Printf("   ✓ %s (port %d) kapatıldı\n", name, port)
-				}
-			}
-			fmt.Println()
+			killPorts = true
 		}
+	}
+
+	// Connect as client
+	client, err := daemon.Connect(socketPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to connect to daemon: %v\n", err)
+		os.Exit(1)
+	}
+	defer client.Close()
+
+	// Start services via daemon
+	_, err = client.StartAndWait(services, killPorts, 10*1e9) // 10 seconds timeout
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to start services: %v\n", err)
+		os.Exit(1)
 	}
 
 	// Start TUI
 	p := tea.NewProgram(
-		tui.New(r),
+		tui.NewWithClient(client, services, cfg),
 		tea.WithAltScreen(),
 		tea.WithMouseCellMotion(),
 	)
@@ -133,6 +219,7 @@ Options:
   -c <file>     Config file path (default: devir.yaml)
   -filter <p>   Show only logs matching pattern
   -exclude <p>  Hide logs matching pattern
+  -mcp          Run as MCP server (daemon mode)
   -v            Show version
   -h            Show this help
 
@@ -141,6 +228,10 @@ Examples:
   devir admin server       # Start only admin and server
   devir --filter "error"   # Show only errors
   devir --exclude "hmr"    # Hide HMR logs
+
+Daemon Mode:
+  Multiple TUI/MCP clients can connect to same daemon.
+  First instance starts daemon, others connect automatically.
 
 Keyboard Shortcuts:
   Tab          Cycle through services

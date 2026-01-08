@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "devir": {
+      "command": "../devir",
+      "args": ["--mcp"],
+      "cwd": "<ABSOLUTE_PATH_TO_PLAYGROUND>"
+    }
+  }
+}

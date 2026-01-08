@@ -36,3 +36,5 @@ debug/
 *.tar.gz
 *.zip
 checksums.txt
+!.claude
+!CLAUDE.md

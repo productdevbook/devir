@@ -48,18 +48,13 @@ func (m Model) renderTabs() string {
 
 	// Service tabs
 	for i, name := range m.services {
-		state := m.Runner.Services[name]
+		running, _, color := m.GetServiceStatus(name)
 		status := "○"
-		if state != nil && state.Running {
+		if running {
 			status = "●"
 		}
 
 		tabText := fmt.Sprintf("%s%s", name, status)
-
-		color := "white"
-		if state != nil {
-			color = state.Service.Color
-		}
 		style := GetServiceStyle(color)
 
 		if i == m.activeTab {
@@ -78,10 +73,7 @@ func (m Model) renderLogs() string {
 	logs := m.GetFilteredLogs()
 
 	for _, entry := range logs {
-		color := "white"
-		if state, ok := m.Runner.Services[entry.Service]; ok {
-			color = state.Service.Color
-		}
+		_, _, color := m.GetServiceStatus(entry.Service)
 		serviceStyle := GetServiceStyle(color)
 
 		var levelStyle lipgloss.Style
@@ -110,16 +102,7 @@ func (m Model) renderStatusBar() string {
 	var parts []string
 
 	for _, name := range m.services {
-		state := m.Runner.Services[name]
-		port := 0
-		running := false
-		color := "white"
-
-		if state != nil {
-			port = state.Service.Port
-			running = state.Running
-			color = state.Service.Color
-		}
+		running, port, color := m.GetServiceStatus(name)
 
 		var status string
 		if running {

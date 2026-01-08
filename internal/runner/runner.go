@@ -22,7 +22,7 @@ type ServiceState struct {
 	Cmd     *exec.Cmd
 	Running bool
 	Logs    []types.LogLine
-	mu      sync.Mutex
+	Mu      sync.Mutex // Exported for daemon access
 }
 
 // Runner manages multiple services
@@ -189,10 +189,10 @@ func (r *Runner) startService(name string) {
 	stdout, _ := cmd.StdoutPipe()
 	stderr, _ := cmd.StderrPipe()
 
-	state.mu.Lock()
+	state.Mu.Lock()
 	state.Cmd = cmd
 	state.Running = true
-	state.mu.Unlock()
+	state.Mu.Unlock()
 
 	if err := cmd.Start(); err != nil {
 		r.LogChan <- types.LogLine{
@@ -228,9 +228,9 @@ func (r *Runner) startService(name string) {
 
 	_ = cmd.Wait()
 
-	state.mu.Lock()
+	state.Mu.Lock()
 	state.Running = false
-	state.mu.Unlock()
+	state.Mu.Unlock()
 
 	r.LogChan <- types.LogLine{
 		Service:   name,
@@ -240,8 +240,8 @@ func (r *Runner) startService(name string) {
 }
 
 func (r *Runner) stopService(state *ServiceState) {
-	state.mu.Lock()
-	defer state.mu.Unlock()
+	state.Mu.Lock()
+	defer state.Mu.Unlock()
 
 	if state.Cmd != nil && state.Cmd.Process != nil {
 		KillProcessGroup(state.Cmd.Process.Pid)
@@ -305,12 +305,12 @@ func (r *Runner) processLine(service, text string, isError bool) {
 	r.mu.RUnlock()
 
 	if state != nil {
-		state.mu.Lock()
+		state.Mu.Lock()
 		state.Logs = append(state.Logs, line)
 		if len(state.Logs) > 1000 {
 			state.Logs = state.Logs[len(state.Logs)-1000:]
 		}
-		state.mu.Unlock()
+		state.Mu.Unlock()
 	}
 
 	if r.tuiMode {
@@ -389,7 +389,7 @@ func (r *Runner) GetServices() map[string]types.ServiceInfo {
 
 	result := make(map[string]types.ServiceInfo)
 	for name, state := range r.Services {
-		state.mu.Lock()
+		state.Mu.Lock()
 		logs := make([]types.LogLine, len(state.Logs))
 		copy(logs, state.Logs)
 		result[name] = types.ServiceInfo{
@@ -398,7 +398,7 @@ func (r *Runner) GetServices() map[string]types.ServiceInfo {
 			Running: state.Running,
 			Logs:    logs,
 		}
-		state.mu.Unlock()
+		state.Mu.Unlock()
 	}
 	return result
 }

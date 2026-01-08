@@ -5,23 +5,24 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"devir/internal/config"
-	"devir/internal/runner"
+	"devir/internal/daemon"
 )
 
-// Server holds the MCP server and runner
+// Server holds the MCP server and daemon client
 type Server struct {
 	server  *mcp.Server
-	runner  *runner.Runner
+	client  *daemon.Client
 	cfg     *config.Config
 	version string
 }
 
-// New creates a new MCP server
-func New(cfg *config.Config, version string) *Server {
+// NewWithClient creates a new MCP server with daemon client
+func NewWithClient(cfg *config.Config, client *daemon.Client, version string) *Server {
 	server := mcp.NewServer(
 		&mcp.Implementation{
 			Name:    "devir",
@@ -30,16 +31,9 @@ func New(cfg *config.Config, version string) *Server {
 		nil,
 	)
 
-	// Create runner with all services from config
-	var services []string
-	for name := range cfg.Services {
-		services = append(services, name)
-	}
-	r := runner.New(cfg, services, "", "")
-
 	mcpServer := &Server{
 		server:  server,
-		runner:  r,
+		client:  client,
 		cfg:     cfg,
 		version: version,
 	}
@@ -96,7 +90,7 @@ func (m *Server) Run() error {
 
 	go func() {
 		<-sigCh
-		m.runner.Stop()
+		m.client.Stop()
 		cancel()
 	}()
 
@@ -176,56 +170,36 @@ type RestartOutput struct {
 // Handlers
 
 func (m *Server) handleCheckPorts(ctx context.Context, req *mcp.CallToolRequest, input struct{}) (*mcp.CallToolResult, CheckPortsOutput, error) {
-	var ports []PortInfo
-	hasConflict := false
+	resp, err := m.client.CheckPortsSync(5 * time.Second)
+	if err != nil {
+		return nil, CheckPortsOutput{}, err
+	}
 
-	for name, svc := range m.cfg.Services {
-		port := svc.Port
-		if port > 0 {
-			inUse := runner.IsPortInUse(port)
-			if inUse {
-				hasConflict = true
-			}
-			ports = append(ports, PortInfo{
-				Service: name,
-				Port:    port,
-				InUse:   inUse,
-			})
-		}
+	var ports []PortInfo
+	for _, p := range resp.Ports {
+		ports = append(ports, PortInfo{
+			Service: p.Service,
+			Port:    p.Port,
+			InUse:   p.InUse,
+		})
 	}
 
 	return nil, CheckPortsOutput{
 		Ports:       ports,
-		HasConflict: hasConflict,
+		HasConflict: resp.HasConflict,
 	}, nil
 }
 
 func (m *Server) handleKillPorts(ctx context.Context, req *mcp.CallToolRequest, input KillPortsInput) (*mcp.CallToolResult, KillPortsOutput, error) {
-	var killed, failed []int
-
-	for _, port := range input.Ports {
-		if err := killPort(port); err != nil {
-			failed = append(failed, port)
-		} else {
-			killed = append(killed, port)
-		}
+	resp, err := m.client.KillPortsSync(input.Ports, 5*time.Second)
+	if err != nil {
+		return nil, KillPortsOutput{}, err
 	}
 
 	return nil, KillPortsOutput{
-		Killed: killed,
-		Failed: failed,
+		Killed: resp.Killed,
+		Failed: resp.Failed,
 	}, nil
-}
-
-func killPort(port int) error {
-	pid, err := runner.GetPortPID(port)
-	if err != nil {
-		return err
-	}
-	if pid > 0 {
-		return runner.KillProcess(pid)
-	}
-	return nil
 }
 
 func (m *Server) handleStart(ctx context.Context, req *mcp.CallToolRequest, input StartInput) (*mcp.CallToolResult, StartOutput, error) {
@@ -240,42 +214,40 @@ func (m *Server) handleStart(ctx context.Context, req *mcp.CallToolRequest, inpu
 		}
 	}
 
-	if input.KillPorts {
-		for _, name := range services {
-			if svc, ok := m.cfg.Services[name]; ok && svc.Port > 0 {
-				if runner.IsPortInUse(svc.Port) {
-					_ = killPort(svc.Port)
-				}
-			}
-		}
+	started, err := m.client.StartAndWait(services, input.KillPorts, 10*time.Second)
+	if err != nil {
+		return nil, StartOutput{}, err
 	}
-
-	m.runner = runner.New(m.cfg, services, "", "")
-	m.runner.Start()
 
 	return nil, StartOutput{
 		Status:   "started",
-		Services: services,
+		Services: started,
 	}, nil
 }
 
 func (m *Server) handleStop(ctx context.Context, req *mcp.CallToolRequest, input struct{}) (*mcp.CallToolResult, StopOutput, error) {
-	m.runner.Stop()
+	if err := m.client.Stop(); err != nil {
+		return nil, StopOutput{}, err
+	}
 	return nil, StopOutput{Status: "stopped"}, nil
 }
 
 func (m *Server) handleStatus(ctx context.Context, req *mcp.CallToolRequest, input struct{}) (*mcp.CallToolResult, StatusOutput, error) {
-	var statuses []ServiceStatus
+	statuses, err := m.client.StatusSync(5 * time.Second)
+	if err != nil {
+		return nil, StatusOutput{}, err
+	}
 
-	for name, state := range m.runner.Services {
-		statuses = append(statuses, ServiceStatus{
-			Name:    name,
-			Running: state.Running,
-			Port:    state.Service.Port,
+	var result []ServiceStatus
+	for _, s := range statuses {
+		result = append(result, ServiceStatus{
+			Name:    s.Name,
+			Running: s.Running,
+			Port:    s.Port,
 		})
 	}
 
-	return nil, StatusOutput{Services: statuses}, nil
+	return nil, StatusOutput{Services: result}, nil
 }
 
 func (m *Server) handleLogs(ctx context.Context, req *mcp.CallToolRequest, input LogsInput) (*mcp.CallToolResult, LogsOutput, error) {
@@ -284,32 +256,21 @@ func (m *Server) handleLogs(ctx context.Context, req *mcp.CallToolRequest, input
 		lines = 100
 	}
 
-	var logs []LogEntry
-
-	for name, state := range m.runner.Services {
-		if input.Service != "" && name != input.Service {
-			continue
-		}
-
-		startIdx := 0
-		if len(state.Logs) > lines {
-			startIdx = len(state.Logs) - lines
-		}
-
-		for _, log := range state.Logs[startIdx:] {
-			level := "info"
-			if log.IsError {
-				level = "error"
-			}
-			logs = append(logs, LogEntry{
-				Service: name,
-				Level:   level,
-				Message: log.Text,
-			})
-		}
+	logs, err := m.client.LogsSync(input.Service, lines, 5*time.Second)
+	if err != nil {
+		return nil, LogsOutput{}, err
 	}
 
-	return nil, LogsOutput{Logs: logs}, nil
+	var result []LogEntry
+	for _, l := range logs {
+		result = append(result, LogEntry{
+			Service: l.Service,
+			Level:   l.Level,
+			Message: l.Message,
+		})
+	}
+
+	return nil, LogsOutput{Logs: result}, nil
 }
 
 func (m *Server) handleRestart(ctx context.Context, req *mcp.CallToolRequest, input RestartInput) (*mcp.CallToolResult, RestartOutput, error) {
@@ -317,11 +278,9 @@ func (m *Server) handleRestart(ctx context.Context, req *mcp.CallToolRequest, in
 		return nil, RestartOutput{}, fmt.Errorf("service name is required")
 	}
 
-	if _, ok := m.runner.Services[input.Service]; !ok {
-		return nil, RestartOutput{}, fmt.Errorf("unknown service: %s", input.Service)
+	if err := m.client.Restart(input.Service); err != nil {
+		return nil, RestartOutput{}, err
 	}
-
-	m.runner.RestartService(input.Service)
 
 	return nil, RestartOutput{
 		Status:  "restarted",

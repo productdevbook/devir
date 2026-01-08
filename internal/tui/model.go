@@ -7,13 +7,22 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 
+	"devir/internal/config"
+	"devir/internal/daemon"
 	"devir/internal/runner"
 	"devir/internal/types"
 )
 
 // Model is the Bubble Tea model
 type Model struct {
-	Runner      *runner.Runner
+	// Legacy runner mode
+	Runner *runner.Runner
+
+	// Client mode
+	client   *daemon.Client
+	cfg      *config.Config
+	statuses map[string]daemon.ServiceStatus
+
 	services    []string
 	activeTab   int // -1 = all, 0+ = specific service
 	viewport    viewport.Model
@@ -26,12 +35,13 @@ type Model struct {
 	searchInput textinput.Model
 	searchQuery string
 	autoScroll  bool
+	clientMode  bool
 }
 
 // tickMsg is sent periodically to update logs
 type tickMsg time.Time
 
-// New creates a new Model
+// New creates a new Model with runner (legacy mode)
 func New(r *runner.Runner) Model {
 	ti := textinput.New()
 	ti.Placeholder = "Search..."
@@ -44,13 +54,40 @@ func New(r *runner.Runner) Model {
 		logs:        make([]types.LogEntry, 0, 1000),
 		searchInput: ti,
 		autoScroll:  true,
+		clientMode:  false,
+	}
+}
+
+// NewWithClient creates a new Model with daemon client
+func NewWithClient(client *daemon.Client, services []string, cfg *config.Config) Model {
+	ti := textinput.New()
+	ti.Placeholder = "Search..."
+	ti.CharLimit = 100
+
+	return Model{
+		client:      client,
+		cfg:         cfg,
+		services:    services,
+		statuses:    make(map[string]daemon.ServiceStatus),
+		activeTab:   -1, // All
+		logs:        make([]types.LogEntry, 0, 1000),
+		searchInput: ti,
+		autoScroll:  true,
+		clientMode:  true,
 	}
 }
 
 // Init initializes the model
 func (m Model) Init() tea.Cmd {
+	if m.clientMode {
+		// Request initial status
+		m.client.Status()
+		return tickCmd()
+	}
+
+	// Legacy runner mode
 	m.Runner.StartWithChannel()
-	return tea.Batch(tickCmd())
+	return tickCmd()
 }
 
 func tickCmd() tea.Cmd {
@@ -83,7 +120,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			switch msg.String() {
 			case "q", "ctrl+c":
 				m.quitting = true
-				m.Runner.Stop()
+				if m.clientMode {
+					m.client.Stop()
+				} else {
+					m.Runner.Stop()
+				}
 				return m, tea.Quit
 
 			case "tab":
@@ -118,7 +159,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			case "r":
 				if m.activeTab >= 0 && m.activeTab < len(m.services) {
-					m.Runner.RestartService(m.services[m.activeTab])
+					if m.clientMode {
+						m.client.Restart(m.services[m.activeTab])
+					} else {
+						m.Runner.RestartService(m.services[m.activeTab])
+					}
 				}
 
 			case "up", "k":
@@ -169,7 +214,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case tickMsg:
-		m.collectLogs()
+		if m.clientMode {
+			m.collectClientLogs()
+			// Periodically request status
+			m.client.Status()
+		} else {
+			m.collectLogs()
+		}
 		m.updateViewport()
 		cmds = append(cmds, tickCmd())
 	}
@@ -184,6 +235,36 @@ func (m *Model) collectLogs() {
 			m.logs = append(m.logs, entry)
 			if len(m.logs) > 2000 {
 				m.logs = m.logs[len(m.logs)-2000:]
+			}
+		default:
+			return
+		}
+	}
+}
+
+func (m *Model) collectClientLogs() {
+	// Process any pending messages from client
+	for {
+		select {
+		case msg := <-m.client.Receive():
+			if msg.Type == daemon.MsgLogEntry {
+				logData, err := daemon.ParsePayload[daemon.LogEntryData](msg)
+				if err == nil {
+					m.logs = append(m.logs, types.LogEntry{
+						Time:    logData.Time,
+						Level:   logData.Level,
+						Service: logData.Service,
+						Message: logData.Message,
+					})
+					if len(m.logs) > 2000 {
+						m.logs = m.logs[len(m.logs)-2000:]
+					}
+				}
+			} else if msg.Type == daemon.MsgStatusResponse {
+				resp, _ := daemon.ParsePayload[daemon.StatusResponse](msg)
+				for _, s := range resp.Services {
+					m.statuses[s.Name] = s
+				}
 			}
 		default:
 			return
@@ -222,6 +303,26 @@ func (m *Model) GetFilteredLogs() []types.LogEntry {
 	}
 
 	return filtered
+}
+
+// GetServiceStatus returns service status (works in both modes)
+func (m *Model) GetServiceStatus(name string) (running bool, port int, color string) {
+	if m.clientMode {
+		if s, ok := m.statuses[name]; ok {
+			return s.Running, s.Port, s.Color
+		}
+		// Get color from config
+		if svc, ok := m.cfg.Services[name]; ok {
+			return false, svc.Port, svc.Color
+		}
+		return false, 0, "white"
+	}
+
+	// Legacy mode
+	if state, ok := m.Runner.Services[name]; ok {
+		return state.Running, state.Service.Port, state.Service.Color
+	}
+	return false, 0, "white"
 }
 
 func containsIgnoreCase(s, substr string) bool {

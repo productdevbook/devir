@@ -1,0 +1,16 @@
+services:
+  service1:
+    dir: service1
+    cmd: bash run.sh
+    port: 3001
+    color: blue
+
+  service2:
+    dir: service2
+    cmd: bash run.sh
+    port: 3002
+    color: green
+
+defaults:
+  - service1
+  - service2
