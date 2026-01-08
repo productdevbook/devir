@@ -46,10 +46,10 @@ func Exists(socketPath string) bool {
 	conn, err := net.Dial("unix", socketPath)
 	if err != nil {
 		// Socket file might exist but daemon not running
-		os.Remove(socketPath)
+		_ = os.Remove(socketPath)
 		return false
 	}
-	conn.Close()
+	_ = conn.Close()
 	return true
 }
 
@@ -84,7 +84,7 @@ func New(cfg *config.Config, socketPath string) *Daemon {
 // Start starts the daemon
 func (d *Daemon) Start() error {
 	// Remove stale socket
-	os.Remove(d.socketPath)
+	_ = os.Remove(d.socketPath)
 
 	listener, err := net.Listen("unix", d.socketPath)
 	if err != nil {
@@ -119,17 +119,17 @@ func (d *Daemon) Stop() {
 	}
 
 	if d.listener != nil {
-		d.listener.Close()
+		_ = d.listener.Close()
 	}
 
 	d.clientsMu.Lock()
 	for c := range d.clients {
-		c.conn.Close()
+		_ = c.conn.Close()
 	}
 	d.clientsMu.Unlock()
 
 	d.wg.Wait()
-	os.Remove(d.socketPath)
+	_ = os.Remove(d.socketPath)
 }
 
 func (d *Daemon) acceptLoop() {
@@ -194,7 +194,7 @@ func (c *clientConn) cleanup() {
 	delete(c.daemon.clients, c)
 	c.daemon.clientsMu.Unlock()
 	close(c.sendCh)
-	c.conn.Close()
+	_ = c.conn.Close()
 }
 
 func (c *clientConn) send(msg Message) {
@@ -260,7 +260,7 @@ func (d *Daemon) handleStart(c *clientConn, msg Message) {
 				if runner.IsPortInUse(svc.Port) {
 					pid, _ := runner.GetPortPID(svc.Port)
 					if pid > 0 {
-						runner.KillProcess(pid)
+						_ = runner.KillProcess(pid)
 					}
 				}
 			}
@@ -328,7 +328,7 @@ func (d *Daemon) handleRestart(c *clientConn, msg Message) {
 
 	d.runner.RestartService(req.Service)
 
-	resp, _ := NewMessage(MsgRestarted, RestartedResponse{Service: req.Service})
+	resp, _ := NewMessage(MsgRestarted, RestartedResponse(req))
 	c.send(resp)
 }
 
@@ -479,7 +479,7 @@ func (d *Daemon) StartServices(services []string, killPorts bool) error {
 				if runner.IsPortInUse(svc.Port) {
 					pid, _ := runner.GetPortPID(svc.Port)
 					if pid > 0 {
-						runner.KillProcess(pid)
+						_ = runner.KillProcess(pid)
 					}
 				}
 			}

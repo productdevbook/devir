@@ -11,14 +11,14 @@ import (
 
 // Client connects to a daemon
 type Client struct {
-	conn     net.Conn
-	sendCh   chan Message
-	recvCh   chan Message
-	closeCh  chan struct{}
-	wg       sync.WaitGroup
-	mu       sync.Mutex
-	closed   bool
-	handlers map[string]func(Message)
+	conn      net.Conn
+	sendCh    chan Message
+	recvCh    chan Message
+	closeCh   chan struct{}
+	wg        sync.WaitGroup
+	mu        sync.Mutex
+	closed    bool
+	handlers  map[string]func(Message)
 	handlerMu sync.RWMutex
 }
 
@@ -129,7 +129,7 @@ func (c *Client) Close() error {
 	c.mu.Unlock()
 
 	close(c.closeCh)
-	c.conn.Close()
+	_ = c.conn.Close()
 	c.wg.Wait()
 	return nil
 }

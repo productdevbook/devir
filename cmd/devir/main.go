@@ -77,7 +77,7 @@ func runMCPMode(cfg *config.Config, socketPath string) {
 			fmt.Fprintf(os.Stderr, "Failed to connect to daemon: %v\n", err)
 			os.Exit(1)
 		}
-		defer client.Close()
+		defer func() { _ = client.Close() }()
 
 		mcpServer := mcp.NewWithClient(cfg, client, Version)
 		if err := mcpServer.Run(); err != nil {
@@ -101,7 +101,7 @@ func runMCPMode(cfg *config.Config, socketPath string) {
 		fmt.Fprintf(os.Stderr, "Failed to connect to daemon: %v\n", err)
 		os.Exit(1)
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	mcpServer := mcp.NewWithClient(cfg, client, Version)
 	if err := mcpServer.Run(); err != nil {
@@ -137,7 +137,7 @@ func runTUIMode(cfg *config.Config, socketPath string) {
 			fmt.Fprintf(os.Stderr, "Failed to connect to daemon: %v\n", err)
 			os.Exit(1)
 		}
-		defer client.Close()
+		defer func() { _ = client.Close() }()
 
 		// Start TUI with client
 		p := tea.NewProgram(
@@ -187,7 +187,7 @@ func runTUIMode(cfg *config.Config, socketPath string) {
 		fmt.Fprintf(os.Stderr, "Failed to connect to daemon: %v\n", err)
 		os.Exit(1)
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	// Start services via daemon
 	_, err = client.StartAndWait(services, killPorts, 10*1e9) // 10 seconds timeout

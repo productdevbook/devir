@@ -3,7 +3,11 @@
     "allow": [
       "Bash(go build:*)",
       "Bash(go vet:*)",
-      "Bash(make build:*)"
+      "Bash(make build:*)",
+      "Bash(brew install:*)",
+      "Bash(go install:*)",
+      "Bash(golangci-lint run:*)",
+      "Bash(golangci-lint help:*)"
     ]
   },
   "enableAllProjectMcpServers": true,

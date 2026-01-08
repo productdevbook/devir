@@ -90,7 +90,7 @@ func (m *Server) Run() error {
 
 	go func() {
 		<-sigCh
-		m.client.Stop()
+		_ = m.client.Stop()
 		cancel()
 	}()
 
@@ -235,10 +235,10 @@ func (m *Server) handleStop(ctx context.Context, req *mcp.CallToolRequest, input
 func (m *Server) handleStatus(ctx context.Context, req *mcp.CallToolRequest, input struct{}) (*mcp.CallToolResult, StatusOutput, error) {
 	statuses, err := m.client.StatusSync(5 * time.Second)
 	if err != nil {
-		return nil, StatusOutput{}, err
+		return nil, StatusOutput{Services: []ServiceStatus{}}, err
 	}
 
-	var result []ServiceStatus
+	result := make([]ServiceStatus, 0, len(statuses))
 	for _, s := range statuses {
 		result = append(result, ServiceStatus{
 			Name:    s.Name,

@@ -81,7 +81,7 @@ func NewWithClient(client *daemon.Client, services []string, cfg *config.Config)
 func (m Model) Init() tea.Cmd {
 	if m.clientMode {
 		// Request initial status
-		m.client.Status()
+		_ = m.client.Status()
 		return tickCmd()
 	}
 
@@ -121,7 +121,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "q", "ctrl+c":
 				m.quitting = true
 				if m.clientMode {
-					m.client.Stop()
+					_ = m.client.Stop()
 				} else {
 					m.Runner.Stop()
 				}
@@ -160,7 +160,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "r":
 				if m.activeTab >= 0 && m.activeTab < len(m.services) {
 					if m.clientMode {
-						m.client.Restart(m.services[m.activeTab])
+						_ = m.client.Restart(m.services[m.activeTab])
 					} else {
 						m.Runner.RestartService(m.services[m.activeTab])
 					}
@@ -217,7 +217,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.clientMode {
 			m.collectClientLogs()
 			// Periodically request status
-			m.client.Status()
+			_ = m.client.Status()
 		} else {
 			m.collectLogs()
 		}
@@ -247,7 +247,8 @@ func (m *Model) collectClientLogs() {
 	for {
 		select {
 		case msg := <-m.client.Receive():
-			if msg.Type == daemon.MsgLogEntry {
+			switch msg.Type {
+			case daemon.MsgLogEntry:
 				logData, err := daemon.ParsePayload[daemon.LogEntryData](msg)
 				if err == nil {
 					m.logs = append(m.logs, types.LogEntry{
@@ -260,7 +261,7 @@ func (m *Model) collectClientLogs() {
 						m.logs = m.logs[len(m.logs)-2000:]
 					}
 				}
-			} else if msg.Type == daemon.MsgStatusResponse {
+			case daemon.MsgStatusResponse:
 				resp, _ := daemon.ParsePayload[daemon.StatusResponse](msg)
 				for _, s := range resp.Services {
 					m.statuses[s.Name] = s
