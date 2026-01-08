@@ -1,9 +1,12 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 
@@ -45,6 +48,13 @@ func main() {
 
 	if showHelp {
 		printHelp()
+		return
+	}
+
+	// Check for init subcommand
+	args := flag.Args()
+	if len(args) > 0 && args[0] == "init" {
+		runInit()
 		return
 	}
 
@@ -214,6 +224,10 @@ func printHelp() {
 
 Usage:
   devir [options] [services...]
+  devir init               # Create devir.yaml
+
+Commands:
+  init          Create devir.yaml in current directory
 
 Options:
   -c <file>     Config file path (default: devir.yaml)
@@ -225,6 +239,7 @@ Options:
 
 Examples:
   devir                    # Start all default services
+  devir init               # Create devir.yaml
   devir admin server       # Start only admin and server
   devir --filter "error"   # Show only errors
   devir --exclude "hmr"    # Hide HMR logs
@@ -238,8 +253,195 @@ Keyboard Shortcuts:
   1-9          Select specific service
   a            Show all services
   /            Search
+  c            Copy logs to clipboard
   r            Restart current service
   j/k          Scroll up/down
   q            Quit
 `, Version)
+}
+
+// runInit creates a devir.yaml file in the current directory
+func runInit() {
+	configPath := "devir.yaml"
+
+	// Check if file already exists
+	if _, err := os.Stat(configPath); err == nil {
+		fmt.Fprintf(os.Stderr, "Error: %s already exists\n", configPath)
+		os.Exit(1)
+	}
+
+	// Detect project structure
+	services := detectServices()
+
+	// Generate YAML content
+	var sb strings.Builder
+	sb.WriteString("services:\n")
+
+	colors := []string{"blue", "green", "magenta", "cyan", "yellow", "red"}
+	icons := map[string]string{
+		"web":      "🌐",
+		"server":   "🚀",
+		"api":      "📡",
+		"admin":    "👤",
+		"worker":   "⚙️",
+		"frontend": "🎨",
+		"backend":  "🔧",
+		"db":       "💾",
+		"redis":    "📦",
+		"queue":    "📬",
+	}
+
+	defaults := []string{}
+
+	for i, svc := range services {
+		color := colors[i%len(colors)]
+		icon := icons[svc.name]
+		if icon == "" {
+			icon = "📦"
+		}
+
+		sb.WriteString(fmt.Sprintf("  %s:\n", svc.name))
+		sb.WriteString(fmt.Sprintf("    icon: \"%s\"\n", icon))
+		sb.WriteString(fmt.Sprintf("    dir: %s\n", svc.dir))
+		sb.WriteString(fmt.Sprintf("    cmd: %s\n", svc.cmd))
+		if svc.port > 0 {
+			sb.WriteString(fmt.Sprintf("    port: %d\n", svc.port))
+		}
+		sb.WriteString(fmt.Sprintf("    color: %s\n", color))
+		sb.WriteString("\n")
+
+		defaults = append(defaults, svc.name)
+	}
+
+	// Add defaults
+	sb.WriteString("defaults:\n")
+	for _, name := range defaults {
+		sb.WriteString(fmt.Sprintf("  - %s\n", name))
+	}
+
+	// Write file
+	if err := os.WriteFile(configPath, []byte(sb.String()), 0644); err != nil {
+		fmt.Fprintf(os.Stderr, "Error writing %s: %v\n", configPath, err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("✓ Created %s with %d service(s)\n", configPath, len(services))
+	if len(services) > 0 {
+		fmt.Println("\nDetected services:")
+		for _, svc := range services {
+			fmt.Printf("  • %s (%s)\n", svc.name, svc.dir)
+		}
+	}
+	fmt.Println("\nRun 'devir' to start your services!")
+}
+
+type detectedService struct {
+	name string
+	dir  string
+	cmd  string
+	port int
+}
+
+// detectServices scans the current directory for common project structures
+func detectServices() []detectedService {
+	var services []detectedService
+
+	// Check current directory
+	if svc := detectServiceInDir("."); svc != nil {
+		svc.name = "app"
+		services = append(services, *svc)
+		return services
+	}
+
+	// Check common monorepo patterns
+	patterns := []string{
+		"apps/*",
+		"packages/*",
+		"services/*",
+		"src/*",
+	}
+
+	for _, pattern := range patterns {
+		matches, _ := filepath.Glob(pattern)
+		for _, match := range matches {
+			info, err := os.Stat(match)
+			if err != nil || !info.IsDir() {
+				continue
+			}
+
+			if svc := detectServiceInDir(match); svc != nil {
+				svc.name = filepath.Base(match)
+				svc.dir = match
+				services = append(services, *svc)
+			}
+		}
+	}
+
+	// If nothing found, create a sample
+	if len(services) == 0 {
+		services = append(services, detectedService{
+			name: "app",
+			dir:  ".",
+			cmd:  "npm run dev",
+			port: 3000,
+		})
+	}
+
+	return services
+}
+
+// detectServiceInDir checks if a directory contains a runnable project
+func detectServiceInDir(dir string) *detectedService {
+	// Check package.json
+	pkgPath := filepath.Join(dir, "package.json")
+	if data, err := os.ReadFile(pkgPath); err == nil {
+		var pkg struct {
+			Scripts map[string]string `json:"scripts"`
+		}
+		if err := json.Unmarshal(data, &pkg); err == nil {
+			if _, ok := pkg.Scripts["dev"]; ok {
+				return &detectedService{
+					dir:  dir,
+					cmd:  "npm run dev",
+					port: 3000,
+				}
+			}
+		}
+	}
+
+	// Check go.mod
+	if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
+		return &detectedService{
+			dir:  dir,
+			cmd:  "go run .",
+			port: 8080,
+		}
+	}
+
+	// Check Cargo.toml (Rust)
+	if _, err := os.Stat(filepath.Join(dir, "Cargo.toml")); err == nil {
+		return &detectedService{
+			dir:  dir,
+			cmd:  "cargo run",
+			port: 8080,
+		}
+	}
+
+	// Check requirements.txt or pyproject.toml (Python)
+	if _, err := os.Stat(filepath.Join(dir, "requirements.txt")); err == nil {
+		return &detectedService{
+			dir:  dir,
+			cmd:  "python main.py",
+			port: 8000,
+		}
+	}
+	if _, err := os.Stat(filepath.Join(dir, "pyproject.toml")); err == nil {
+		return &detectedService{
+			dir:  dir,
+			cmd:  "python -m uvicorn main:app --reload",
+			port: 8000,
+		}
+	}
+
+	return nil
 }

@@ -9,7 +9,9 @@
       "Bash(golangci-lint run:*)",
       "Bash(golangci-lint help:*)",
       "WebFetch(domain:github.com)",
-      "Bash(tree:*)"
+      "Bash(tree:*)",
+      "Bash(./devir:*)",
+      "Bash(gofmt:*)"
     ]
   },
   "enableAllProjectMcpServers": true,

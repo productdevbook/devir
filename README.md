@@ -64,7 +64,30 @@ cd devir
 make build
 ```
 
+## Quick Start
+
+```bash
+# Create devir.yaml (auto-detects project structure)
+devir init
+
+# Start services
+devir
+```
+
 ## Usage
+
+### Initialize Project
+
+```bash
+devir init
+```
+
+This creates a `devir.yaml` file by detecting your project structure:
+- **Node.js** - Detects `package.json` with `dev` script
+- **Go** - Detects `go.mod`
+- **Rust** - Detects `Cargo.toml`
+- **Python** - Detects `requirements.txt` or `pyproject.toml`
+- **Monorepos** - Scans `apps/*`, `packages/*`, `services/*`
 
 ### TUI Mode (default)
 
