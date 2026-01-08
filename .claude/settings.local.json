@@ -12,7 +12,9 @@
       "Bash(tree:*)",
       "Bash(./devir:*)",
       "Bash(gofmt:*)",
-      "Bash(golangci-lint:*)"
+      "Bash(golangci-lint:*)",
+      "Bash(go list:*)",
+      "Bash(make test:*)"
     ]
   },
   "enableAllProjectMcpServers": true,
