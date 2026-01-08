@@ -16,6 +16,8 @@ A terminal UI for managing multiple dev services with colored logs, filtering, a
 
 - **Bubble Tea TUI** - Interactive terminal UI with tabs, viewport, and status bar
 - **Colored Logs** - Each service has its own color for easy identification
+- **Service Types** - Long-running, oneshot, interval, and HTTP request services
+- **Custom Icons** - Emoji icons for services with dynamic status updates
 - **Service Filtering** - View logs from all services or filter by specific service
 - **Search** - Filter logs by text pattern
 - **Port Management** - Detects ports in use and offers to kill them
@@ -109,6 +111,7 @@ All clients share the same daemon and see the same logs in real-time. When Claud
 | `1-9` | Select specific service |
 | `a` | Show all services |
 | `/` | Search logs |
+| `c` | Copy logs to clipboard |
 | `r` | Restart current service |
 | `j/k` | Scroll up/down |
 | `q` | Quit |
@@ -144,6 +147,128 @@ defaults:
 | `cmd` | Command to run |
 | `port` | Port number (for status display) |
 | `color` | Log prefix color: `blue`, `green`, `yellow`, `magenta`, `cyan`, `red`, `white` |
+| `icon` | Custom emoji/icon for the service |
+| `type` | Service type: `service` (default), `oneshot`, `interval`, `http` |
+| `interval` | Run interval for `interval` type (e.g., `5s`, `1m`) |
+| `url` | URL for `http` type |
+| `method` | HTTP method for `http` type (default: `GET`) |
+| `body` | Request body for `http` type |
+| `headers` | Custom headers for `http` type |
+
+## Service Types
+
+Devir supports 4 different service types:
+
+### `service` (default)
+Long-running process. For web servers, APIs, etc.
+
+```yaml
+web:
+  dir: apps/web
+  cmd: npm run dev
+  port: 3000
+  icon: "🌐"
+  color: blue
+```
+
+### `oneshot`
+Run once and exit. For migrations, setup scripts, etc.
+
+```yaml
+migrate:
+  type: oneshot
+  dir: .
+  cmd: npm run migrate
+  icon: "⚙️"
+  color: yellow
+```
+
+### `interval`
+Run periodically. For health checks, cleanup jobs, etc.
+
+```yaml
+health:
+  type: interval
+  interval: 5s
+  dir: .
+  cmd: bash health.sh
+  icon: "💓"
+  color: green
+```
+
+### `http`
+Make HTTP requests. For API calls, webhooks, etc.
+
+```yaml
+api-check:
+  type: http
+  url: https://api.example.com/health
+  method: GET
+  icon: "📡"
+  color: magenta
+```
+
+With POST body:
+
+```yaml
+notify:
+  type: http
+  url: https://api.example.com/webhook
+  method: POST
+  body: '{"event": "started"}'
+  headers:
+    - "Authorization: Bearer token123"
+  icon: "📤"
+  color: cyan
+```
+
+## Status Symbols
+
+| Symbol | Status | Description |
+|:------:|--------|-------------|
+| `●` | Running | Service is active |
+| `✓` | Completed | Oneshot/HTTP completed successfully |
+| `✗` | Failed | Service failed |
+| `◐` | Waiting | Interval service waiting for next run |
+| `○` | Stopped | Service is stopped |
+
+## Dynamic Status
+
+Services can dynamically update their icon and status by writing to `.devir-status` file in their directory:
+
+```bash
+# Simple - just icon
+echo "🟢" > .devir-status
+
+# JSON - icon + message
+echo '{"icon": "🟢", "message": "All OK"}' > .devir-status
+
+# JSON - full control
+echo '{"icon": "🔴", "color": "red", "status": "failed", "message": "DB down!"}' > .devir-status
+```
+
+### Dynamic Status Fields
+
+| Field | Description |
+|-------|-------------|
+| `icon` | Override icon with emoji or short text |
+| `color` | Override service color |
+| `status` | Override status: `running`, `completed`, `failed`, `waiting` |
+| `message` | Status message (shown in MCP response) |
+
+### Example: Health Check with Dynamic Status
+
+```bash
+#!/bin/bash
+# health.sh
+if curl -sf http://localhost:3000/health >/dev/null 2>&1; then
+    echo '{"icon": "🟢", "message": "All systems operational"}' > .devir-status
+    echo "Health OK"
+else
+    echo '{"icon": "🔴", "color": "red", "message": "Service down!"}' > .devir-status
+    echo "Health FAIL"
+fi
+```
 
 ## MCP Integration
 
@@ -169,11 +294,37 @@ Add to your project's `.mcp.json`:
 |------|-------------|
 | `devir_start` | Start services |
 | `devir_stop` | Stop all services |
-| `devir_status` | Get service status |
+| `devir_status` | Get service status (includes type, icon, message) |
 | `devir_logs` | Get recent logs |
 | `devir_restart` | Restart a service |
 | `devir_check_ports` | Check if ports are in use |
 | `devir_kill_ports` | Kill processes on ports |
+
+### MCP Status Response Example
+
+```json
+{
+  "services": [
+    {
+      "name": "web",
+      "running": true,
+      "port": 3000,
+      "type": "service",
+      "status": "running",
+      "icon": "🌐"
+    },
+    {
+      "name": "health",
+      "running": true,
+      "type": "interval",
+      "status": "waiting",
+      "icon": "🟢",
+      "message": "All systems operational",
+      "runCount": 5
+    }
+  ]
+}
+```
 
 ## Development
 
