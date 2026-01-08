@@ -1,6 +1,10 @@
 package tui
 
 import (
+	"fmt"
+	"os/exec"
+	"runtime"
+	"strings"
 	"time"
 
 	"github.com/charmbracelet/bubbles/textinput"
@@ -36,10 +40,18 @@ type Model struct {
 	searchQuery string
 	autoScroll  bool
 	clientMode  bool
+	statusMsg   string    // Temporary status message (e.g., "Copied!")
+	statusTime  time.Time // When to clear status message
 }
 
 // tickMsg is sent periodically to update logs
 type tickMsg time.Time
+
+// copyMsg is sent after clipboard copy
+type copyMsg struct {
+	success bool
+	err     error
+}
 
 // New creates a new Model with runner (legacy mode)
 func New(r *runner.Runner) Model {
@@ -166,6 +178,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 				}
 
+			case "c":
+				// Copy filtered logs to clipboard
+				cmds = append(cmds, m.copyLogsToClipboard())
+
 			case "up", "k":
 				m.viewport.ScrollUp(1)
 				m.autoScroll = false
@@ -221,8 +237,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else {
 			m.collectLogs()
 		}
+		// Clear status message after 2 seconds
+		if m.statusMsg != "" && time.Since(m.statusTime) > 2*time.Second {
+			m.statusMsg = ""
+		}
 		m.updateViewport()
 		cmds = append(cmds, tickCmd())
+
+	case copyMsg:
+		if msg.success {
+			m.statusMsg = "Copied!"
+		} else {
+			m.statusMsg = "Copy failed"
+		}
+		m.statusTime = time.Now()
 	}
 
 	return m, tea.Batch(cmds...)
@@ -326,6 +354,27 @@ func (m *Model) GetServiceStatus(name string) (running bool, port int, color str
 	return false, 0, "white"
 }
 
+// GetFullServiceStatus returns full status information for a service
+func (m *Model) GetFullServiceStatus(name string) (running bool, port int, color, icon, svcType, status string) {
+	if m.clientMode {
+		if s, ok := m.statuses[name]; ok {
+			return s.Running, s.Port, s.Color, s.Icon, s.Type, s.Status
+		}
+		// Get from config
+		if svc, ok := m.cfg.Services[name]; ok {
+			return false, svc.Port, svc.Color, svc.Icon, string(svc.GetEffectiveType()), "stopped"
+		}
+		return false, 0, "white", "", "service", "stopped"
+	}
+
+	// Legacy mode
+	if state, ok := m.Runner.Services[name]; ok {
+		return state.Running, state.Service.Port, state.Service.Color, state.Service.Icon,
+			string(state.Service.GetEffectiveType()), string(state.Status)
+	}
+	return false, 0, "white", "", "service", "stopped"
+}
+
 func containsIgnoreCase(s, substr string) bool {
 	return len(s) >= len(substr) &&
 		(s == substr ||
@@ -359,4 +408,67 @@ func equalIgnoreCase(a, b string) bool {
 		}
 	}
 	return true
+}
+
+// copyLogsToClipboard copies filtered logs to system clipboard
+func (m *Model) copyLogsToClipboard() tea.Cmd {
+	return func() tea.Msg {
+		logs := m.GetFilteredLogs()
+		if len(logs) == 0 {
+			return copyMsg{success: false}
+		}
+
+		var sb strings.Builder
+		for _, entry := range logs {
+			sb.WriteString(fmt.Sprintf("[%s] %s: %s\n",
+				strings.ToUpper(entry.Level),
+				entry.Service,
+				entry.Message,
+			))
+		}
+
+		err := copyToClipboard(sb.String())
+		return copyMsg{success: err == nil, err: err}
+	}
+}
+
+// copyToClipboard copies text to system clipboard (cross-platform)
+func copyToClipboard(text string) error {
+	var cmd *exec.Cmd
+
+	switch runtime.GOOS {
+	case "darwin":
+		cmd = exec.Command("pbcopy")
+	case "linux":
+		// Try xclip first, then xsel
+		if _, err := exec.LookPath("xclip"); err == nil {
+			cmd = exec.Command("xclip", "-selection", "clipboard")
+		} else {
+			cmd = exec.Command("xsel", "--clipboard", "--input")
+		}
+	case "windows":
+		cmd = exec.Command("clip")
+	default:
+		return fmt.Errorf("unsupported platform: %s", runtime.GOOS)
+	}
+
+	pipe, err := cmd.StdinPipe()
+	if err != nil {
+		return err
+	}
+
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+
+	_, err = pipe.Write([]byte(text))
+	if err != nil {
+		return err
+	}
+
+	if err := pipe.Close(); err != nil {
+		return err
+	}
+
+	return cmd.Wait()
 }

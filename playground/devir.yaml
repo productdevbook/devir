@@ -1,16 +1,39 @@
 services:
-  service1:
+  # Long-running web server (default type)
+  web:
+    icon: "🌐"
     dir: service1
-    cmd: bash run.sh
-    port: 3001
+    cmd: python3 -m http.server 4512
+    port: 4512
     color: blue
 
-  service2:
-    dir: service2
-    cmd: bash run.sh
-    port: 3002
+  # Oneshot - runs once and exits
+  setup:
+    icon: "⚙️"
+    type: oneshot
+    dir: service1
+    cmd: bash setup.sh
+    color: yellow
+
+  # Interval - runs periodically
+  health:
+    icon: "💓"
+    type: interval
+    interval: 5s
+    dir: service1
+    cmd: bash health.sh
     color: green
 
+  # HTTP request service
+  api-check:
+    icon: "📡"
+    type: http
+    url: https://httpbin.org/get
+    method: GET
+    color: magenta
+
 defaults:
-  - service1
-  - service2
+  - setup
+  - web
+  - health
+  - api-check

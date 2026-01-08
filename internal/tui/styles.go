@@ -58,6 +58,17 @@ var (
 	StatusStopped = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("8"))
 
+	StatusCompleted = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("12")).
+			Bold(true)
+
+	StatusFailed = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("9")).
+			Bold(true)
+
+	StatusWaiting = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("11"))
+
 	// Help style
 	HelpStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("240"))

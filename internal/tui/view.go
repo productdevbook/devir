@@ -48,13 +48,16 @@ func (m Model) renderTabs() string {
 
 	// Service tabs
 	for i, name := range m.services {
-		running, _, color := m.GetServiceStatus(name)
-		status := "○"
-		if running {
-			status = "●"
+		_, _, color, icon, _, status := m.GetFullServiceStatus(name)
+		statusSymbol := getStatusSymbol(status)
+
+		// Use custom icon if defined, otherwise just name
+		displayName := name
+		if icon != "" {
+			displayName = icon + " " + name
 		}
 
-		tabText := fmt.Sprintf("%s%s", name, status)
+		tabText := fmt.Sprintf("%s%s", displayName, statusSymbol)
 		style := GetServiceStyle(color)
 
 		if i == m.activeTab {
@@ -66,6 +69,22 @@ func (m Model) renderTabs() string {
 
 	tabBar := lipgloss.JoinHorizontal(lipgloss.Top, tabs...)
 	return TabBarStyle.Width(m.width).Render(tabBar)
+}
+
+// getStatusSymbol returns appropriate symbol based on status
+func getStatusSymbol(status string) string {
+	switch status {
+	case "running":
+		return "●"
+	case "completed":
+		return "✓"
+	case "failed":
+		return "✗"
+	case "waiting":
+		return "◐"
+	default:
+		return "○"
+	}
 }
 
 func (m Model) renderLogs() string {
@@ -102,14 +121,9 @@ func (m Model) renderStatusBar() string {
 	var parts []string
 
 	for _, name := range m.services {
-		running, port, color := m.GetServiceStatus(name)
+		_, port, color, icon, svcType, status := m.GetFullServiceStatus(name)
 
-		var status string
-		if running {
-			status = StatusRunning.Render("●")
-		} else {
-			status = StatusStopped.Render("○")
-		}
+		statusStr := getStyledStatus(status)
 
 		serviceStyle := GetServiceStyle(color)
 		portStr := ""
@@ -117,7 +131,23 @@ func (m Model) renderStatusBar() string {
 			portStr = fmt.Sprintf(":%d", port)
 		}
 
-		parts = append(parts, fmt.Sprintf("%s %s%s", status, serviceStyle.Render(name), portStr))
+		// Use icon if defined, otherwise show type indicator
+		displayName := name
+		if icon != "" {
+			displayName = icon + " " + name
+		} else {
+			// Show service type indicator only if no icon
+			switch svcType {
+			case "oneshot":
+				displayName = name + "[1]"
+			case "interval":
+				displayName = name + "[∞]"
+			case "http":
+				displayName = name + "[H]"
+			}
+		}
+
+		parts = append(parts, fmt.Sprintf("%s %s%s", statusStr, serviceStyle.Render(displayName), portStr))
 	}
 
 	statusContent := strings.Join(parts, "  │  ")
@@ -129,11 +159,32 @@ func (m Model) renderStatusBar() string {
 	return StatusBarStyle.Width(m.width).Render(statusContent)
 }
 
+// getStyledStatus returns styled status symbol
+func getStyledStatus(status string) string {
+	switch status {
+	case "running":
+		return StatusRunning.Render("●")
+	case "completed":
+		return StatusCompleted.Render("✓")
+	case "failed":
+		return StatusFailed.Render("✗")
+	case "waiting":
+		return StatusWaiting.Render("◐")
+	default:
+		return StatusStopped.Render("○")
+	}
+}
+
 func (m Model) renderHelp() string {
 	if m.searching {
 		return "Search: " + m.searchInput.View()
 	}
 
-	help := "Tab: switch │ 1-9: select │ a: all │ /: search │ r: restart │ q: quit"
+	// Show status message if present
+	if m.statusMsg != "" {
+		return HelpStyle.Render(m.statusMsg)
+	}
+
+	help := "Tab: switch │ 1-9: select │ a: all │ /: search │ c: copy │ r: restart │ q: quit"
 	return HelpStyle.Render(help)
 }

@@ -8,7 +8,8 @@
       "Bash(go install:*)",
       "Bash(golangci-lint run:*)",
       "Bash(golangci-lint help:*)",
-      "WebFetch(domain:github.com)"
+      "WebFetch(domain:github.com)",
+      "Bash(tree:*)"
     ]
   },
   "enableAllProjectMcpServers": true,

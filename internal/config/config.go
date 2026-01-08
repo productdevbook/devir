@@ -4,16 +4,48 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
 
+// ServiceType defines the type of service
+type ServiceType string
+
+const (
+	ServiceTypeDefault  ServiceType = ""         // Long-running service (default)
+	ServiceTypeService  ServiceType = "service"  // Explicit long-running service
+	ServiceTypeOneshot  ServiceType = "oneshot"  // Run once and exit
+	ServiceTypeInterval ServiceType = "interval" // Run periodically
+	ServiceTypeHTTP     ServiceType = "http"     // HTTP request
+)
+
 // Service represents a single service configuration
 type Service struct {
-	Dir   string `yaml:"dir"`
-	Cmd   string `yaml:"cmd"`
-	Port  int    `yaml:"port"`
-	Color string `yaml:"color"`
+	Dir      string        `yaml:"dir"`
+	Cmd      string        `yaml:"cmd"`
+	Port     int           `yaml:"port"`
+	Color    string        `yaml:"color"`
+	Icon     string        `yaml:"icon"`     // custom icon/emoji for display
+	Type     ServiceType   `yaml:"type"`     // service, oneshot, interval, http
+	Interval time.Duration `yaml:"interval"` // for interval type
+	URL      string        `yaml:"url"`      // for http type
+	Method   string        `yaml:"method"`   // GET, POST, etc.
+	Body     string        `yaml:"body"`     // request body
+	Headers  []string      `yaml:"headers"`  // custom headers (key: value format)
+}
+
+// IsLongRunning returns true if this service runs continuously
+func (s *Service) IsLongRunning() bool {
+	return s.Type == ServiceTypeDefault || s.Type == ServiceTypeService
+}
+
+// GetEffectiveType returns the effective service type (handles empty default)
+func (s *Service) GetEffectiveType() ServiceType {
+	if s.Type == ServiceTypeDefault {
+		return ServiceTypeService
+	}
+	return s.Type
 }
 
 // Config represents the devir configuration
@@ -55,17 +87,45 @@ func Load(path string) (*Config, error) {
 
 	// Validate services
 	for name, svc := range cfg.Services {
-		if svc.Dir == "" {
-			return nil, fmt.Errorf("service %s: dir is required", name)
+		// Validate based on service type
+		switch svc.Type {
+		case ServiceTypeHTTP:
+			// HTTP type requires URL, not cmd
+			if svc.URL == "" {
+				return nil, fmt.Errorf("service %s: url is required for http type", name)
+			}
+			if svc.Method == "" {
+				svc.Method = "GET"
+			}
+		case ServiceTypeInterval:
+			// Interval type requires cmd and interval
+			if svc.Cmd == "" {
+				return nil, fmt.Errorf("service %s: cmd is required", name)
+			}
+			if svc.Interval <= 0 {
+				return nil, fmt.Errorf("service %s: interval is required for interval type", name)
+			}
+		default:
+			// Default and oneshot types require dir and cmd
+			if svc.Dir == "" && svc.Type != ServiceTypeOneshot {
+				return nil, fmt.Errorf("service %s: dir is required", name)
+			}
+			if svc.Cmd == "" {
+				return nil, fmt.Errorf("service %s: cmd is required", name)
+			}
 		}
-		if svc.Cmd == "" {
-			return nil, fmt.Errorf("service %s: cmd is required", name)
-		}
+
+		// Set default color
 		if svc.Color == "" {
-			// Set default color
 			svc.Color = "white"
-			cfg.Services[name] = svc
 		}
+
+		// Set default dir for oneshot if not specified
+		if svc.Dir == "" && svc.Type == ServiceTypeOneshot {
+			svc.Dir = "."
+		}
+
+		cfg.Services[name] = svc
 	}
 
 	return &cfg, nil

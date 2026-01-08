@@ -91,10 +91,17 @@ type RestartedResponse struct {
 
 // ServiceStatus represents a service's current state
 type ServiceStatus struct {
-	Name    string `json:"name"`
-	Running bool   `json:"running"`
-	Port    int    `json:"port"`
-	Color   string `json:"color"`
+	Name     string `json:"name"`
+	Running  bool   `json:"running"`
+	Port     int    `json:"port"`
+	Color    string `json:"color"`
+	Icon     string `json:"icon"`     // custom icon/emoji
+	Type     string `json:"type"`     // service, oneshot, interval, http
+	Status   string `json:"status"`   // running, completed, failed, waiting, stopped
+	LastRun  string `json:"lastRun"`  // ISO timestamp
+	NextRun  string `json:"nextRun"`  // ISO timestamp (for interval)
+	ExitCode int    `json:"exitCode"` // last exit code
+	RunCount int    `json:"runCount"` // number of runs
 }
 
 // StatusResponse contains all service statuses

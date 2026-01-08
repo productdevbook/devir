@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"time"
 
 	"devir/internal/config"
 	"devir/internal/runner"
@@ -337,12 +338,26 @@ func (d *Daemon) handleStatus(c *clientConn) {
 
 	if d.runner != nil {
 		for name, state := range d.runner.Services {
-			statuses = append(statuses, ServiceStatus{
-				Name:    name,
-				Running: state.Running,
-				Port:    state.Service.Port,
-				Color:   state.Service.Color,
-			})
+			state.Mu.Lock()
+			s := ServiceStatus{
+				Name:     name,
+				Running:  state.Running,
+				Port:     state.Service.Port,
+				Color:    state.Service.Color,
+				Icon:     state.Service.Icon,
+				Type:     string(state.Service.GetEffectiveType()),
+				Status:   string(state.Status),
+				ExitCode: state.ExitCode,
+				RunCount: state.RunCount,
+			}
+			if !state.LastRun.IsZero() {
+				s.LastRun = state.LastRun.Format(time.RFC3339)
+			}
+			if !state.NextRun.IsZero() {
+				s.NextRun = state.NextRun.Format(time.RFC3339)
+			}
+			state.Mu.Unlock()
+			statuses = append(statuses, s)
 		}
 	}
 
