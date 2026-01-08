@@ -4,7 +4,8 @@
       "mcp__devir__devir_status",
       "mcp__devir__devir_start",
       "mcp__devir__devir_restart",
-      "mcp__devir__devir_stop"
+      "mcp__devir__devir_stop",
+      "mcp__devir__devir_logs"
     ]
   },
   "enableAllProjectMcpServers": true,

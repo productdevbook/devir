@@ -1,22 +1,19 @@
-version: "2"
-
 run:
   timeout: 5m
+  modules-download-mode: readonly
 
 linters:
   enable:
     - errcheck
+    - gosimple
     - govet
     - ineffassign
     - staticcheck
     - unused
-
-formatters:
-  enable:
     - gofmt
     - goimports
 
-settings:
+linters-settings:
   errcheck:
     check-type-assertions: true
     check-blank: false
@@ -26,11 +23,18 @@ settings:
     disable:
       - fieldalignment
 
+  gofmt:
+    simplify: true
+
   goimports:
-    local-prefixes:
-      - devir
+    local-prefixes: devir
 
 issues:
   exclude-use-default: false
   max-issues-per-linter: 0
   max-same-issues: 0
+
+  exclude-rules:
+    - path: _test\.go
+      linters:
+        - errcheck
