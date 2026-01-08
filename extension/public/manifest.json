@@ -1,0 +1,21 @@
+{
+  "manifest_version": 3,
+  "name": "Devir Logs",
+  "version": "1.0.0",
+  "description": "View devir service logs in Chrome DevTools",
+  "devtools_page": "devtools.html",
+  "web_accessible_resources": [{
+    "resources": ["panel.html"],
+    "matches": ["<all_urls>"]
+  }],
+  "permissions": [],
+  "host_permissions": [
+    "ws://localhost:9222/*",
+    "ws://127.0.0.1:9222/*"
+  ],
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}

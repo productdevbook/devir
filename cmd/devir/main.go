@@ -27,6 +27,7 @@ var (
 	showHelp    bool
 	showVersion bool
 	mcpMode     bool
+	wsPort      int
 )
 
 func init() {
@@ -36,6 +37,7 @@ func init() {
 	flag.BoolVar(&showHelp, "h", false, "Show help")
 	flag.BoolVar(&showVersion, "v", false, "Show version")
 	flag.BoolVar(&mcpMode, "mcp", false, "Run as MCP server")
+	flag.IntVar(&wsPort, "ws-port", daemon.DefaultWSPort, "WebSocket server port (0 to disable)")
 }
 
 func main() {
@@ -98,7 +100,7 @@ func runMCPMode(cfg *config.Config, socketPath string) {
 	}
 
 	// Start new daemon + MCP
-	d := daemon.New(cfg, socketPath)
+	d := daemon.NewWithWSPort(cfg, socketPath, wsPort)
 	if err := d.Start(); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to start daemon: %v\n", err)
 		os.Exit(1)
@@ -164,7 +166,7 @@ func runTUIMode(cfg *config.Config, socketPath string) {
 	}
 
 	// No existing daemon - start new daemon + TUI
-	d := daemon.New(cfg, socketPath)
+	d := daemon.NewWithWSPort(cfg, socketPath, wsPort)
 	if err := d.Start(); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to start daemon: %v\n", err)
 		os.Exit(1)
@@ -234,6 +236,7 @@ Options:
   -filter <p>   Show only logs matching pattern
   -exclude <p>  Hide logs matching pattern
   -mcp          Run as MCP server (daemon mode)
+  -ws-port <n>  WebSocket server port (default: 9222, 0 to disable)
   -v            Show version
   -h            Show this help
 

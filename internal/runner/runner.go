@@ -35,6 +35,7 @@ type ServiceState struct {
 	ticker      *time.Ticker
 	stopChan    chan struct{}
 	DynamicIcon string // Icon from .devir-status file
+	runID       uint64 // Generation counter for race condition prevention
 }
 
 // Runner manages multiple services
@@ -219,6 +220,8 @@ func (r *Runner) startLongRunningService(name string, state *ServiceState) {
 	stderr, _ := cmd.StderrPipe()
 
 	state.Mu.Lock()
+	state.runID++
+	currentRunID := state.runID
 	state.Cmd = cmd
 	state.Running = true
 	state.Status = types.StatusRunning
@@ -226,7 +229,10 @@ func (r *Runner) startLongRunningService(name string, state *ServiceState) {
 
 	if err := cmd.Start(); err != nil {
 		state.Mu.Lock()
-		state.Status = types.StatusFailed
+		if state.runID == currentRunID {
+			state.Running = false
+			state.Status = types.StatusFailed
+		}
 		state.Mu.Unlock()
 		r.LogChan <- types.LogLine{
 			Service:   name,
@@ -261,9 +267,12 @@ func (r *Runner) startLongRunningService(name string, state *ServiceState) {
 
 	_ = cmd.Wait()
 
+	// Only update state if this run is still current (prevents race condition)
 	state.Mu.Lock()
-	state.Running = false
-	state.Status = types.StatusStopped
+	if state.runID == currentRunID {
+		state.Running = false
+		state.Status = types.StatusStopped
+	}
 	state.Mu.Unlock()
 
 	r.LogChan <- types.LogLine{
@@ -284,6 +293,8 @@ func (r *Runner) startOneshotService(name string, state *ServiceState) {
 	}
 
 	state.Mu.Lock()
+	state.runID++
+	currentRunID := state.runID
 	state.Running = true
 	state.Status = types.StatusRunning
 	state.LastRun = time.Now()
@@ -316,9 +327,11 @@ func (r *Runner) startOneshotService(name string, state *ServiceState) {
 
 	if err := cmd.Start(); err != nil {
 		state.Mu.Lock()
-		state.Running = false
-		state.Status = types.StatusFailed
-		state.ExitCode = -1
+		if state.runID == currentRunID {
+			state.Running = false
+			state.Status = types.StatusFailed
+			state.ExitCode = -1
+		}
 		state.Mu.Unlock()
 		r.LogChan <- types.LogLine{
 			Service:   name,
@@ -347,16 +360,25 @@ func (r *Runner) startOneshotService(name string, state *ServiceState) {
 
 	err := cmd.Wait()
 
+	// Only update state if this run is still current (prevents race condition)
 	state.Mu.Lock()
-	state.Running = false
-	if err != nil {
-		state.Status = types.StatusFailed
-		if exitErr, ok := err.(*exec.ExitError); ok {
-			state.ExitCode = exitErr.ExitCode()
+	if state.runID == currentRunID {
+		state.Running = false
+		if err != nil {
+			state.Status = types.StatusFailed
+			if exitErr, ok := err.(*exec.ExitError); ok {
+				state.ExitCode = exitErr.ExitCode()
+			} else {
+				state.ExitCode = -1
+			}
 		} else {
-			state.ExitCode = -1
+			state.Status = types.StatusCompleted
+			state.ExitCode = 0
 		}
-		state.Mu.Unlock()
+	}
+	state.Mu.Unlock()
+
+	if err != nil {
 		r.LogChan <- types.LogLine{
 			Service:   name,
 			Text:      fmt.Sprintf("[oneshot] Failed (exit %d)", state.ExitCode),
@@ -364,9 +386,6 @@ func (r *Runner) startOneshotService(name string, state *ServiceState) {
 			IsError:   true,
 		}
 	} else {
-		state.Status = types.StatusCompleted
-		state.ExitCode = 0
-		state.Mu.Unlock()
 		r.LogChan <- types.LogLine{
 			Service:   name,
 			Text:      "[oneshot] Completed",
@@ -380,6 +399,8 @@ func (r *Runner) startIntervalService(name string, state *ServiceState) {
 	svc := state.Service
 
 	state.Mu.Lock()
+	state.runID++
+	currentRunID := state.runID
 	state.Running = true
 	state.Status = types.StatusWaiting
 	state.ticker = time.NewTicker(svc.Interval)
@@ -400,9 +421,12 @@ func (r *Runner) startIntervalService(name string, state *ServiceState) {
 		case <-state.ticker.C:
 			r.runIntervalCommand(name, state)
 		case <-state.stopChan:
+			// Only update state if this run is still current (prevents race condition)
 			state.Mu.Lock()
-			state.Running = false
-			state.Status = types.StatusStopped
+			if state.runID == currentRunID {
+				state.Running = false
+				state.Status = types.StatusStopped
+			}
 			if state.ticker != nil {
 				state.ticker.Stop()
 			}
@@ -476,6 +500,8 @@ func (r *Runner) startHTTPService(name string, state *ServiceState) {
 	svc := state.Service
 
 	state.Mu.Lock()
+	state.runID++
+	currentRunID := state.runID
 	state.Running = true
 	state.Status = types.StatusRunning
 	state.LastRun = time.Now()
@@ -496,8 +522,10 @@ func (r *Runner) startHTTPService(name string, state *ServiceState) {
 	req, err := http.NewRequest(svc.Method, svc.URL, bodyReader)
 	if err != nil {
 		state.Mu.Lock()
-		state.Running = false
-		state.Status = types.StatusFailed
+		if state.runID == currentRunID {
+			state.Running = false
+			state.Status = types.StatusFailed
+		}
 		state.Mu.Unlock()
 		r.LogChan <- types.LogLine{
 			Service:   name,
@@ -525,8 +553,10 @@ func (r *Runner) startHTTPService(name string, state *ServiceState) {
 	resp, err := client.Do(req)
 	if err != nil {
 		state.Mu.Lock()
-		state.Running = false
-		state.Status = types.StatusFailed
+		if state.runID == currentRunID {
+			state.Running = false
+			state.Status = types.StatusFailed
+		}
 		state.Mu.Unlock()
 		r.LogChan <- types.LogLine{
 			Service:   name,
@@ -545,13 +575,16 @@ func (r *Runner) startHTTPService(name string, state *ServiceState) {
 	}
 
 	isError := resp.StatusCode >= 400
+	// Only update state if this run is still current (prevents race condition)
 	state.Mu.Lock()
-	state.Running = false
-	state.ExitCode = resp.StatusCode
-	if isError {
-		state.Status = types.StatusFailed
-	} else {
-		state.Status = types.StatusCompleted
+	if state.runID == currentRunID {
+		state.Running = false
+		state.ExitCode = resp.StatusCode
+		if isError {
+			state.Status = types.StatusFailed
+		} else {
+			state.Status = types.StatusCompleted
+		}
 	}
 	state.Mu.Unlock()
 
@@ -604,6 +637,43 @@ func (r *Runner) RestartService(name string) {
 
 	r.stopService(state)
 	time.Sleep(500 * time.Millisecond)
+	go r.startService(name)
+}
+
+// StopService stops a specific service
+func (r *Runner) StopService(name string) {
+	r.mu.RLock()
+	state := r.Services[name]
+	r.mu.RUnlock()
+
+	if state == nil {
+		return
+	}
+
+	r.stopService(state)
+
+	// Wait for process to fully terminate
+	time.Sleep(200 * time.Millisecond)
+
+	state.Mu.Lock()
+	state.Running = false
+	state.Status = types.StatusStopped
+	state.Cmd = nil
+	state.Mu.Unlock()
+}
+
+// StartService starts a specific service
+func (r *Runner) StartService(name string) {
+	r.mu.RLock()
+	state := r.Services[name]
+	r.mu.RUnlock()
+
+	if state == nil {
+		return
+	}
+
+	// Force start - don't check if already running
+	// The user explicitly wants to start this service
 	go r.startService(name)
 }
 

@@ -32,7 +32,7 @@ jobs:
             name: devir-windows-amd64
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
 
       - name: Set up Go
         uses: actions/setup-go@v6
@@ -74,12 +74,45 @@ jobs:
             *.tar.gz
             *.zip
 
-  release:
-    name: Release
-    needs: build
+  extension:
+    name: Build Extension
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Install dependencies
+        run: cd extension && pnpm install
+
+      - name: Build extension
+        run: cd extension && pnpm build
+
+      - name: Create extension zip
+        run: |
+          cd extension/dist
+          zip -r ../../devir-extension.zip .
+
+      - name: Upload extension artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: devir-extension
+          path: devir-extension.zip
+
+  release:
+    name: Release
+    needs: [build, extension]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
@@ -175,7 +208,7 @@ jobs:
           echo "LINUX_AMD64=$LINUX_AMD64" >> $GITHUB_OUTPUT
 
       - name: Checkout homebrew-tap
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           repository: productdevbook/homebrew-tap
           token: ${{ secrets.HOMEBREW_TAP_TOKEN }}

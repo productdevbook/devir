@@ -65,6 +65,8 @@ type Daemon struct {
 	socketPath string
 	stopCh     chan struct{}
 	wg         sync.WaitGroup
+	wsServer   *WSServer
+	wsPort     int
 }
 
 type clientConn struct {
@@ -75,11 +77,17 @@ type clientConn struct {
 
 // New creates a new daemon
 func New(cfg *config.Config, socketPath string) *Daemon {
+	return NewWithWSPort(cfg, socketPath, DefaultWSPort)
+}
+
+// NewWithWSPort creates a new daemon with custom WebSocket port
+func NewWithWSPort(cfg *config.Config, socketPath string, wsPort int) *Daemon {
 	return &Daemon{
 		config:     cfg,
 		clients:    make(map[*clientConn]bool),
 		socketPath: socketPath,
 		stopCh:     make(chan struct{}),
+		wsPort:     wsPort,
 	}
 }
 
@@ -93,6 +101,15 @@ func (d *Daemon) Start() error {
 		return fmt.Errorf("failed to listen on socket: %w", err)
 	}
 	d.listener = listener
+
+	// Start WebSocket server for browser clients
+	if d.wsPort > 0 {
+		d.wsServer = NewWSServer(d)
+		if err := d.wsServer.Start(d.wsPort); err != nil {
+			// WebSocket is optional, log but don't fail
+			fmt.Printf("Warning: WebSocket server failed to start: %v\n", err)
+		}
+	}
 
 	// Accept connections
 	d.wg.Add(1)
@@ -118,6 +135,10 @@ func (d *Daemon) Stop() {
 
 	if d.runner != nil {
 		d.runner.Stop()
+	}
+
+	if d.wsServer != nil {
+		d.wsServer.Stop()
 	}
 
 	if d.listener != nil {
@@ -300,6 +321,11 @@ func (d *Daemon) forwardLogs() {
 			}
 			msg, _ := NewMessage(MsgLogEntry, logData)
 			d.broadcast(msg)
+
+			// Also broadcast to WebSocket clients
+			if d.wsServer != nil {
+				d.wsServer.BroadcastLog(logData)
+			}
 		}
 	}
 }
