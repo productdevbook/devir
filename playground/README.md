@@ -1,51 +1,51 @@
 # Devir Playground
 
-Test ortamı - daemon mode ve servis tiplerini test etmek için.
+Test environment for testing daemon mode and service types.
 
-## Servis Tipleri
+## Service Types
 
-Bu playground 4 farklı servis tipini gösterir:
+This playground demonstrates 4 different service types:
 
-| Tip | Açıklama | Örnek |
-|-----|----------|-------|
-| `service` (default) | Sürekli çalışan process | `web` - Python HTTP server |
-| `oneshot` | Bir kere çalışıp biten | `setup` - Başlangıç script'i |
-| `interval` | Belirli aralıklarla çalışan | `health` - Her 5 saniyede health check |
-| `http` | HTTP isteği yapan | `api-check` - httpbin.org GET request |
+| Type | Description | Example |
+|------|-------------|---------|
+| `service` (default) | Long-running process | `web` - Python HTTP server |
+| `oneshot` | Runs once and exits | `setup` - Startup script |
+| `interval` | Runs at regular intervals | `health` - Health check every 5 seconds |
+| `http` | Makes HTTP requests | `api-check` - httpbin.org GET request |
 
-## Status Sembolleri
+## Status Symbols
 
-- `●` Running - Servis aktif çalışıyor
-- `✓` Completed - Oneshot başarıyla tamamlandı
-- `✗` Failed - Servis hata verdi
-- `◐` Waiting - Interval servisi sonraki çalışmayı bekliyor
-- `○` Stopped - Servis durmuş
+- `●` Running - Service is actively running
+- `✓` Completed - Oneshot completed successfully
+- `✗` Failed - Service encountered an error
+- `◐` Waiting - Interval service waiting for next run
+- `○` Stopped - Service is stopped
 
-## Kurulum
+## Setup
 
 ```bash
-# 1. Devir'i build et
+# 1. Build Devir
 cd ..
 make build
 
-# 2. MCP config oluştur (Claude Code için)
+# 2. Create MCP config (for Claude Code)
 cd playground
 cp .mcp.json.example .mcp.json
 
-# 3. .mcp.json içindeki path'i düzenle
+# 3. Edit the path in .mcp.json
 ```
 
-## Kullanım
+## Usage
 
 ```bash
-# TUI başlat
+# Start TUI
 ../devir
 
-# MCP modunda bağlan (Claude Code için)
+# Connect in MCP mode (for Claude Code)
 ../devir --mcp
 ```
 
-## devir.yaml Örneği
+## devir.yaml Example
 
 ```yaml
 services:
@@ -79,20 +79,20 @@ services:
     color: magenta
 ```
 
-## Test Senaryoları
+## Test Scenarios
 
-### Senaryo 1: Farklı Servis Tipleri
-1. `../devir` başlat
-2. `setup` oneshot'ın `✓` ile tamamlandığını gör
-3. `web` servisinin `●` ile çalıştığını gör
-4. `health` servisinin `◐` ile beklediğini, her 5 saniyede çalıştığını gör
-5. `api-check` HTTP servisinin `✓` ile tamamlandığını gör
+### Scenario 1: Different Service Types
+1. Start `../devir`
+2. See `setup` oneshot complete with `✓`
+3. See `web` service running with `●`
+4. See `health` service waiting with `◐`, running every 5 seconds
+5. See `api-check` HTTP service complete with `✓`
 
-### Senaryo 2: TUI → TUI
+### Scenario 2: TUI → TUI
 1. Terminal 1: `../devir`
 2. Terminal 2: `../devir`
-3. İki terminal de aynı logları ve statusları görmeli
+3. Both terminals should show the same logs and statuses
 
-### Senaryo 3: MCP Status
-1. Claude Code'da `devir_status` çağır
-2. Tüm servislerin type, status, runCount bilgilerini gör
+### Scenario 3: MCP Status
+1. Call `devir_status` in Claude Code
+2. See type, status, runCount info for all services
