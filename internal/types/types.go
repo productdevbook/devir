@@ -51,4 +51,6 @@ type ServiceInfo struct {
 	ExitCode int           // last exit code
 	RunCount int           // number of runs (for interval)
 	Message  string        // dynamic status message from .devir-status
+	CPU      float64       // CPU percentage (0-100 per core, can exceed 100 with multiple cores)
+	Memory   uint64        // Memory in bytes (RSS)
 }

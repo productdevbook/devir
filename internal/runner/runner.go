@@ -769,6 +769,16 @@ func (r *Runner) GetServices() map[string]types.ServiceInfo {
 			message = ds.Message
 		}
 
+		// Collect CPU and memory metrics for running services
+		var cpu float64
+		var memory uint64
+		if state.Running && state.Cmd != nil && state.Cmd.Process != nil {
+			if metrics, err := GetProcessMetrics(state.Cmd.Process.Pid); err == nil {
+				cpu = metrics.CPU
+				memory = metrics.Memory
+			}
+		}
+
 		result[name] = types.ServiceInfo{
 			Name:     name,
 			Color:    color,
@@ -782,6 +792,8 @@ func (r *Runner) GetServices() map[string]types.ServiceInfo {
 			ExitCode: state.ExitCode,
 			RunCount: state.RunCount,
 			Message:  message,
+			CPU:      cpu,
+			Memory:   memory,
 		}
 		state.Mu.Unlock()
 	}

@@ -362,9 +362,16 @@ func (d *Daemon) handleStatus(c *clientConn) {
 				message = ds.Message
 			}
 
+			// Capture PID for metrics collection
+			var pid int
+			running := state.Running
+			if running && state.Cmd != nil && state.Cmd.Process != nil {
+				pid = state.Cmd.Process.Pid
+			}
+
 			s := ServiceStatus{
 				Name:     name,
-				Running:  state.Running,
+				Running:  running,
 				Port:     state.Service.Port,
 				Color:    color,
 				Icon:     icon,
@@ -381,6 +388,15 @@ func (d *Daemon) handleStatus(c *clientConn) {
 				s.NextRun = state.NextRun.Format(time.RFC3339)
 			}
 			state.Mu.Unlock()
+
+			// Collect metrics after releasing lock
+			if pid > 0 {
+				if metrics, err := runner.GetProcessMetrics(pid); err == nil {
+					s.CPU = metrics.CPU
+					s.Memory = metrics.Memory
+				}
+			}
+
 			statuses = append(statuses, s)
 		}
 	}

@@ -18,16 +18,16 @@ const (
 	MsgKillPorts  = "kill_ports"
 
 	// Daemon → Client
-	MsgStarted         = "started"
-	MsgStopped         = "stopped"
-	MsgRestarted       = "restarted"
-	MsgStatusResponse  = "status_response"
-	MsgLogsResponse    = "logs_response"
-	MsgLogsCleared     = "logs_cleared"
-	MsgPortsResponse   = "ports_response"
-	MsgKillResponse    = "kill_response"
-	MsgLogEntry        = "log_entry" // Broadcast to all clients
-	MsgError           = "error"
+	MsgStarted        = "started"
+	MsgStopped        = "stopped"
+	MsgRestarted      = "restarted"
+	MsgStatusResponse = "status_response"
+	MsgLogsResponse   = "logs_response"
+	MsgLogsCleared    = "logs_cleared"
+	MsgPortsResponse  = "ports_response"
+	MsgKillResponse   = "kill_response"
+	MsgLogEntry       = "log_entry" // Broadcast to all clients
+	MsgError          = "error"
 )
 
 // Message is the wire format for daemon communication
@@ -98,18 +98,20 @@ type RestartedResponse struct {
 
 // ServiceStatus represents a service's current state
 type ServiceStatus struct {
-	Name     string `json:"name"`
-	Running  bool   `json:"running"`
-	Port     int    `json:"port"`
-	Color    string `json:"color"`
-	Icon     string `json:"icon"`     // custom icon/emoji
-	Type     string `json:"type"`     // service, oneshot, interval, http
-	Status   string `json:"status"`   // running, completed, failed, waiting, stopped
-	Message  string `json:"message"`  // dynamic status message
-	LastRun  string `json:"lastRun"`  // ISO timestamp
-	NextRun  string `json:"nextRun"`  // ISO timestamp (for interval)
-	ExitCode int    `json:"exitCode"` // last exit code
-	RunCount int    `json:"runCount"` // number of runs
+	Name     string  `json:"name"`
+	Running  bool    `json:"running"`
+	Port     int     `json:"port"`
+	Color    string  `json:"color"`
+	Icon     string  `json:"icon"`     // custom icon/emoji
+	Type     string  `json:"type"`     // service, oneshot, interval, http
+	Status   string  `json:"status"`   // running, completed, failed, waiting, stopped
+	Message  string  `json:"message"`  // dynamic status message
+	LastRun  string  `json:"lastRun"`  // ISO timestamp
+	NextRun  string  `json:"nextRun"`  // ISO timestamp (for interval)
+	ExitCode int     `json:"exitCode"` // last exit code
+	RunCount int     `json:"runCount"` // number of runs
+	CPU      float64 `json:"cpu"`      // CPU percentage
+	Memory   uint64  `json:"memory"`   // Memory in bytes (RSS)
 }
 
 // StatusResponse contains all service statuses

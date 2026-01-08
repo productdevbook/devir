@@ -68,3 +68,16 @@ func IsPortInUse(port int) bool {
 	pid, _ := GetPortPID(port)
 	return pid > 0
 }
+
+// ProcessMetrics holds CPU and memory metrics for a process
+type ProcessMetrics struct {
+	CPU    float64 // CPU percentage
+	Memory uint64  // Memory in bytes (RSS)
+}
+
+// GetProcessMetrics gets CPU and memory usage for a process
+// TODO: Implement Windows-specific metrics using Windows API
+func GetProcessMetrics(pid int) (ProcessMetrics, error) {
+	// Windows implementation not yet available
+	return ProcessMetrics{}, nil
+}

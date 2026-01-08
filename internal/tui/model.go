@@ -388,6 +388,28 @@ func (m *Model) GetFullServiceStatus(name string) (running bool, port int, color
 	return false, 0, "white", "", "service", "stopped"
 }
 
+// GetServiceMetrics returns CPU and memory metrics for a service
+func (m *Model) GetServiceMetrics(name string) (cpu float64, memory uint64) {
+	if m.clientMode {
+		if s, ok := m.statuses[name]; ok {
+			return s.CPU, s.Memory
+		}
+		return 0, 0
+	}
+
+	// Legacy mode - get metrics directly from the process
+	if state, ok := m.Runner.Services[name]; ok {
+		state.Mu.Lock()
+		defer state.Mu.Unlock()
+		if state.Running && state.Cmd != nil && state.Cmd.Process != nil {
+			if metrics, err := runner.GetProcessMetrics(state.Cmd.Process.Pid); err == nil {
+				return metrics.CPU, metrics.Memory
+			}
+		}
+	}
+	return 0, 0
+}
+
 func containsIgnoreCase(s, substr string) bool {
 	return len(s) >= len(substr) &&
 		(s == substr ||

@@ -119,9 +119,11 @@ func (m Model) renderLogs() string {
 
 func (m Model) renderStatusBar() string {
 	var parts []string
+	var totalCPU float64
+	var totalMemory uint64
 
 	for _, name := range m.services {
-		_, port, color, icon, svcType, status := m.GetFullServiceStatus(name)
+		running, port, color, icon, svcType, status := m.GetFullServiceStatus(name)
 
 		statusStr := getStyledStatus(status)
 
@@ -147,16 +149,52 @@ func (m Model) renderStatusBar() string {
 			}
 		}
 
-		parts = append(parts, fmt.Sprintf("%s %s%s", statusStr, serviceStyle.Render(displayName), portStr))
+		// Get metrics for running services
+		metricsStr := ""
+		if running {
+			cpu, memory := m.GetServiceMetrics(name)
+			totalCPU += cpu
+			totalMemory += memory
+			if cpu > 0 || memory > 0 {
+				metricsStr = fmt.Sprintf(" %s %s", formatCPU(cpu), formatMemory(memory))
+			}
+		}
+
+		parts = append(parts, fmt.Sprintf("%s %s%s%s", statusStr, serviceStyle.Render(displayName), portStr, metricsStr))
 	}
 
 	statusContent := strings.Join(parts, "  │  ")
+
+	// Add totals when on "All" tab and there are running services
+	if m.activeTab == -1 && (totalCPU > 0 || totalMemory > 0) {
+		statusContent = fmt.Sprintf("Σ %s %s  │  ", formatCPU(totalCPU), formatMemory(totalMemory)) + statusContent
+	}
 
 	if m.searchQuery != "" {
 		statusContent += fmt.Sprintf("  │  Filter: %s", m.searchQuery)
 	}
 
 	return StatusBarStyle.Width(m.width).Render(statusContent)
+}
+
+// formatCPU formats CPU percentage
+func formatCPU(cpu float64) string {
+	if cpu < 0.1 {
+		return "0%"
+	}
+	return fmt.Sprintf("%.0f%%", cpu)
+}
+
+// formatMemory formats memory in human-readable format
+func formatMemory(bytes uint64) string {
+	if bytes == 0 {
+		return "0MB"
+	}
+	mb := float64(bytes) / (1024 * 1024)
+	if mb >= 1024 {
+		return fmt.Sprintf("%.1fGB", mb/1024)
+	}
+	return fmt.Sprintf("%.0fMB", mb)
 }
 
 // getStyledStatus returns styled status symbol

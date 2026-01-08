@@ -139,15 +139,17 @@ type StopOutput struct {
 }
 
 type ServiceStatus struct {
-	Name     string `json:"name"`
-	Running  bool   `json:"running"`
-	Port     int    `json:"port"`
-	Type     string `json:"type"`     // service, oneshot, interval, http
-	Status   string `json:"status"`   // running, completed, failed, waiting, stopped
-	LastRun  string `json:"lastRun"`  // ISO timestamp
-	NextRun  string `json:"nextRun"`  // ISO timestamp (for interval)
-	ExitCode int    `json:"exitCode"` // last exit code
-	RunCount int    `json:"runCount"` // number of runs
+	Name     string  `json:"name"`
+	Running  bool    `json:"running"`
+	Port     int     `json:"port"`
+	Type     string  `json:"type"`     // service, oneshot, interval, http
+	Status   string  `json:"status"`   // running, completed, failed, waiting, stopped
+	LastRun  string  `json:"lastRun"`  // ISO timestamp
+	NextRun  string  `json:"nextRun"`  // ISO timestamp (for interval)
+	ExitCode int     `json:"exitCode"` // last exit code
+	RunCount int     `json:"runCount"` // number of runs
+	CPU      float64 `json:"cpu"`      // CPU percentage
+	Memory   uint64  `json:"memory"`   // Memory in bytes (RSS)
 }
 
 type StatusOutput struct {
@@ -270,6 +272,8 @@ func (m *Server) handleStatus(ctx context.Context, req *mcp.CallToolRequest, inp
 			NextRun:  s.NextRun,
 			ExitCode: s.ExitCode,
 			RunCount: s.RunCount,
+			CPU:      s.CPU,
+			Memory:   s.Memory,
 		})
 	}
 
