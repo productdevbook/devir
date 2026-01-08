@@ -13,6 +13,14 @@ const (
 	StatusWaiting   ServiceStatus = "waiting"   // Interval waiting for next run
 )
 
+// DynamicStatus is written by services to .devir-status file
+type DynamicStatus struct {
+	Icon    string `json:"icon,omitempty"`    // Custom icon/emoji
+	Color   string `json:"color,omitempty"`   // Override color
+	Message string `json:"message,omitempty"` // Status message
+	Status  string `json:"status,omitempty"`  // Override status (running, completed, failed, waiting)
+}
+
 // LogLine represents a single log line from a service
 type LogLine struct {
 	Service   string
@@ -31,15 +39,16 @@ type LogEntry struct {
 
 // ServiceInfo provides service status for TUI
 type ServiceInfo struct {
-	Name     string
-	Color    string
-	Icon     string        // custom icon/emoji
-	Running  bool
-	Logs     []LogLine
-	Type     string        // service, oneshot, interval, http
-	Status   ServiceStatus // detailed status
-	LastRun  time.Time     // last execution time
-	NextRun  time.Time     // next scheduled run (for interval)
-	ExitCode int           // last exit code
-	RunCount int           // number of runs (for interval)
+	Name       string
+	Color      string
+	Icon       string        // custom icon/emoji
+	Running    bool
+	Logs       []LogLine
+	Type       string        // service, oneshot, interval, http
+	Status     ServiceStatus // detailed status
+	LastRun    time.Time     // last execution time
+	NextRun    time.Time     // next scheduled run (for interval)
+	ExitCode   int           // last exit code
+	RunCount   int           // number of runs (for interval)
+	Message    string        // dynamic status message from .devir-status
 }

@@ -98,6 +98,7 @@ type ServiceStatus struct {
 	Icon     string `json:"icon"`     // custom icon/emoji
 	Type     string `json:"type"`     // service, oneshot, interval, http
 	Status   string `json:"status"`   // running, completed, failed, waiting, stopped
+	Message  string `json:"message"`  // dynamic status message
 	LastRun  string `json:"lastRun"`  // ISO timestamp
 	NextRun  string `json:"nextRun"`  // ISO timestamp (for interval)
 	ExitCode int    `json:"exitCode"` // last exit code

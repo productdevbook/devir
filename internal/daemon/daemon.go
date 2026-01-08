@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -339,14 +340,35 @@ func (d *Daemon) handleStatus(c *clientConn) {
 	if d.runner != nil {
 		for name, state := range d.runner.Services {
 			state.Mu.Lock()
+
+			// Check for dynamic status from .devir-status file
+			icon := state.Service.Icon
+			color := state.Service.Color
+			status := string(state.Status)
+			message := ""
+
+			if ds := d.readDynamicStatus(state); ds != nil {
+				if ds.Icon != "" {
+					icon = ds.Icon
+				}
+				if ds.Color != "" {
+					color = ds.Color
+				}
+				if ds.Status != "" {
+					status = ds.Status
+				}
+				message = ds.Message
+			}
+
 			s := ServiceStatus{
 				Name:     name,
 				Running:  state.Running,
 				Port:     state.Service.Port,
-				Color:    state.Service.Color,
-				Icon:     state.Service.Icon,
+				Color:    color,
+				Icon:     icon,
 				Type:     string(state.Service.GetEffectiveType()),
-				Status:   string(state.Status),
+				Status:   status,
+				Message:  message,
 				ExitCode: state.ExitCode,
 				RunCount: state.RunCount,
 			}
@@ -363,6 +385,34 @@ func (d *Daemon) handleStatus(c *clientConn) {
 
 	resp, _ := NewMessage(MsgStatusResponse, StatusResponse{Services: statuses})
 	c.send(resp)
+}
+
+// readDynamicStatus reads status from .devir-status file in service directory
+func (d *Daemon) readDynamicStatus(state *runner.ServiceState) *types.DynamicStatus {
+	statusFile := filepath.Join(d.config.RootDir, state.Service.Dir, ".devir-status")
+	data, err := os.ReadFile(statusFile)
+	if err != nil {
+		return nil
+	}
+
+	content := strings.TrimSpace(string(data))
+	if content == "" {
+		return nil
+	}
+
+	// Try JSON first
+	if strings.HasPrefix(content, "{") {
+		var ds types.DynamicStatus
+		if err := json.Unmarshal([]byte(content), &ds); err == nil {
+			return &ds
+		}
+	}
+
+	// Fallback: plain text is just the icon
+	if len(content) > 20 {
+		content = content[:20]
+	}
+	return &types.DynamicStatus{Icon: content}
 }
 
 func (d *Daemon) handleLogs(c *clientConn, msg Message) {

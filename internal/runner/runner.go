@@ -3,6 +3,7 @@ package runner
 import (
 	"bufio"
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -20,19 +21,20 @@ import (
 
 // ServiceState holds the state of a running service
 type ServiceState struct {
-	Name     string
-	Service  config.Service
-	Cmd      *exec.Cmd
-	Running  bool
-	Logs     []types.LogLine
-	Mu       sync.Mutex // Exported for daemon access
-	Status   types.ServiceStatus
-	LastRun  time.Time
-	NextRun  time.Time
-	ExitCode int
-	RunCount int
-	ticker   *time.Ticker
-	stopChan chan struct{}
+	Name        string
+	Service     config.Service
+	Cmd         *exec.Cmd
+	Running     bool
+	Logs        []types.LogLine
+	Mu          sync.Mutex // Exported for daemon access
+	Status      types.ServiceStatus
+	LastRun     time.Time
+	NextRun     time.Time
+	ExitCode    int
+	RunCount    int
+	ticker      *time.Ticker
+	stopChan    chan struct{}
+	DynamicIcon string // Icon from .devir-status file
 }
 
 // Runner manages multiple services
@@ -732,22 +734,72 @@ func (r *Runner) GetServices() map[string]types.ServiceInfo {
 		state.Mu.Lock()
 		logs := make([]types.LogLine, len(state.Logs))
 		copy(logs, state.Logs)
+
+		// Check for dynamic status from .devir-status file
+		icon := state.Service.Icon
+		color := state.Service.Color
+		status := state.Status
+		message := ""
+
+		if ds := r.readDynamicStatus(state); ds != nil {
+			if ds.Icon != "" {
+				icon = ds.Icon
+			}
+			if ds.Color != "" {
+				color = ds.Color
+			}
+			if ds.Status != "" {
+				status = types.ServiceStatus(ds.Status)
+			}
+			message = ds.Message
+		}
+
 		result[name] = types.ServiceInfo{
 			Name:     name,
-			Color:    state.Service.Color,
-			Icon:     state.Service.Icon,
+			Color:    color,
+			Icon:     icon,
 			Running:  state.Running,
 			Logs:     logs,
 			Type:     string(state.Service.GetEffectiveType()),
-			Status:   state.Status,
+			Status:   status,
 			LastRun:  state.LastRun,
 			NextRun:  state.NextRun,
 			ExitCode: state.ExitCode,
 			RunCount: state.RunCount,
+			Message:  message,
 		}
 		state.Mu.Unlock()
 	}
 	return result
+}
+
+// readDynamicStatus reads status from .devir-status file in service directory
+// Supports both plain text (just icon) and JSON format
+func (r *Runner) readDynamicStatus(state *ServiceState) *types.DynamicStatus {
+	statusFile := filepath.Join(r.Config.RootDir, state.Service.Dir, ".devir-status")
+	data, err := os.ReadFile(statusFile)
+	if err != nil {
+		return nil
+	}
+
+	content := strings.TrimSpace(string(data))
+	if content == "" {
+		return nil
+	}
+
+	// Try JSON first
+	if strings.HasPrefix(content, "{") {
+		var ds types.DynamicStatus
+		if err := json.Unmarshal([]byte(content), &ds); err == nil {
+			return &ds
+		}
+	}
+
+	// Fallback: plain text is just the icon
+	if len(content) > 20 {
+		content = content[:20]
+	}
+	return &types.DynamicStatus{Icon: content}
 }
 
 // GetServiceNames returns list of service names
