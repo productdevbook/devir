@@ -457,7 +457,8 @@ func copyToClipboard(text string) error {
 		return err
 	}
 
-	if err := cmd.Start(); err != nil {
+	err = cmd.Start()
+	if err != nil {
 		return err
 	}
 
@@ -466,7 +467,8 @@ func copyToClipboard(text string) error {
 		return err
 	}
 
-	if err := pipe.Close(); err != nil {
+	err = pipe.Close()
+	if err != nil {
 		return err
 	}
 

@@ -536,7 +536,7 @@ func (r *Runner) startHTTPService(name string, state *ServiceState) {
 		}
 		return
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, _ := io.ReadAll(resp.Body)
 	bodyStr := strings.TrimSpace(string(body))

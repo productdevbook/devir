@@ -39,16 +39,16 @@ type LogEntry struct {
 
 // ServiceInfo provides service status for TUI
 type ServiceInfo struct {
-	Name       string
-	Color      string
-	Icon       string        // custom icon/emoji
-	Running    bool
-	Logs       []LogLine
-	Type       string        // service, oneshot, interval, http
-	Status     ServiceStatus // detailed status
-	LastRun    time.Time     // last execution time
-	NextRun    time.Time     // next scheduled run (for interval)
-	ExitCode   int           // last exit code
-	RunCount   int           // number of runs (for interval)
-	Message    string        // dynamic status message from .devir-status
+	Name     string
+	Color    string
+	Icon     string // custom icon/emoji
+	Running  bool
+	Logs     []LogLine
+	Type     string        // service, oneshot, interval, http
+	Status   ServiceStatus // detailed status
+	LastRun  time.Time     // last execution time
+	NextRun  time.Time     // next scheduled run (for interval)
+	ExitCode int           // last exit code
+	RunCount int           // number of runs (for interval)
+	Message  string        // dynamic status message from .devir-status
 }
