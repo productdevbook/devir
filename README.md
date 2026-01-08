@@ -20,6 +20,7 @@ A terminal UI for managing multiple dev services with colored logs, filtering, a
 - **Search** - Filter logs by text pattern
 - **Port Management** - Detects ports in use and offers to kill them
 - **MCP Server** - Integrate with Claude Code via Model Context Protocol
+- **Daemon Mode** - Multiple TUI/MCP clients can connect to the same services
 
 ## Installation
 
@@ -83,6 +84,23 @@ devir --exclude "hmr"
 devir --mcp
 ```
 
+### Daemon Mode
+
+Devir uses a Unix socket daemon, allowing multiple clients (TUI or MCP) to connect to the same running services:
+
+```bash
+# Terminal 1: Start TUI (daemon starts automatically)
+devir
+
+# Terminal 2: Connect another TUI (same services, same logs)
+devir
+
+# Terminal 3: Connect via MCP (Claude Code controls same services)
+devir --mcp
+```
+
+All clients share the same daemon and see the same logs in real-time. When Claude Code restarts a service, you'll see it immediately in your TUI.
+
 ### Keyboard Shortcuts
 
 | Key | Action |
@@ -136,11 +154,14 @@ Add to your project's `.mcp.json`:
   "mcpServers": {
     "devir": {
       "command": "devir",
-      "args": ["--mcp", "-c", "/path/to/devir.yaml"]
+      "args": ["--mcp"],
+      "cwd": "/path/to/project"
     }
   }
 }
 ```
+
+> **Note:** Set `cwd` to the directory containing your `devir.yaml`. The daemon socket is unique per project directory, so multiple projects can run independently.
 
 ### Available MCP Tools
 
