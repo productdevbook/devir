@@ -8,6 +8,10 @@ A terminal UI for managing multiple dev services with colored logs, filtering, a
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Go Version](https://img.shields.io/github/go-mod/go-version/productdevbook/devir)](https://go.dev/)
 
+<p align="center">
+  <img src=".github/assets/screen.png" alt="Devir Screenshot" width="800">
+</p>
+
 ## Features
 
 - **Bubble Tea TUI** - Interactive terminal UI with tabs, viewport, and status bar
