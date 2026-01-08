@@ -1,0 +1,233 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+            name: devir-linux-amd64
+          - goos: linux
+            goarch: arm64
+            name: devir-linux-arm64
+          - goos: darwin
+            goarch: amd64
+            name: devir-darwin-amd64
+          - goos: darwin
+            goarch: arm64
+            name: devir-darwin-arm64
+          - goos: windows
+            goarch: amd64
+            name: devir-windows-amd64
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+
+      - name: Get version
+        id: version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Build binary
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: 0
+        run: |
+          VERSION=${{ steps.version.outputs.VERSION }}
+          LDFLAGS="-s -w -X main.Version=${VERSION}"
+
+          if [ "$GOOS" = "windows" ]; then
+            go build -ldflags="${LDFLAGS}" -o devir.exe ./cmd/devir
+          else
+            go build -ldflags="${LDFLAGS}" -o devir ./cmd/devir
+          fi
+
+      - name: Create archive
+        run: |
+          if [ "${{ matrix.goos }}" = "windows" ]; then
+            zip ${{ matrix.name }}.zip devir.exe
+          else
+            tar -czvf ${{ matrix.name }}.tar.gz devir
+          fi
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}
+          path: |
+            *.tar.gz
+            *.zip
+
+  release:
+    name: Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Create checksums
+        run: |
+          cd dist
+          sha256sum * > checksums.txt
+          cat checksums.txt
+
+      - name: Get version
+        id: version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Create Release with Changelog
+        run: npx changelogithub
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload Release Assets
+        run: |
+          gh release upload ${{ steps.version.outputs.VERSION }} \
+            dist/*.tar.gz \
+            dist/*.zip \
+            dist/checksums.txt \
+            --clobber
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  update-homebrew:
+    name: Update Homebrew
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get version
+        id: version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+
+      - name: Download checksums
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "Waiting for release assets to be available..."
+          sleep 30
+          for i in {1..10}; do
+            if gh release download "v${{ steps.version.outputs.VERSION }}" \
+                --repo productdevbook/devir \
+                --pattern "checksums.txt" \
+                --clobber; then
+              echo "Downloaded checksums.txt"
+              cat checksums.txt
+              break
+            fi
+            echo "Attempt $i failed, retrying in 15s..."
+            sleep 15
+          done
+
+      - name: Extract SHA256
+        id: sha
+        run: |
+          if [ ! -f checksums.txt ]; then
+            echo "Error: checksums.txt not found"
+            exit 1
+          fi
+          DARWIN_ARM64=$(grep 'darwin-arm64' checksums.txt | awk '{print $1}')
+          DARWIN_AMD64=$(grep 'darwin-amd64' checksums.txt | awk '{print $1}')
+          LINUX_ARM64=$(grep 'linux-arm64' checksums.txt | awk '{print $1}')
+          LINUX_AMD64=$(grep 'linux-amd64' checksums.txt | awk '{print $1}')
+
+          echo "DARWIN_ARM64=$DARWIN_ARM64"
+          echo "DARWIN_AMD64=$DARWIN_AMD64"
+          echo "LINUX_ARM64=$LINUX_ARM64"
+          echo "LINUX_AMD64=$LINUX_AMD64"
+
+          if [ -z "$DARWIN_ARM64" ] || [ -z "$DARWIN_AMD64" ] || [ -z "$LINUX_ARM64" ] || [ -z "$LINUX_AMD64" ]; then
+            echo "Error: One or more SHA256 values are empty"
+            exit 1
+          fi
+
+          echo "DARWIN_ARM64=$DARWIN_ARM64" >> $GITHUB_OUTPUT
+          echo "DARWIN_AMD64=$DARWIN_AMD64" >> $GITHUB_OUTPUT
+          echo "LINUX_ARM64=$LINUX_ARM64" >> $GITHUB_OUTPUT
+          echo "LINUX_AMD64=$LINUX_AMD64" >> $GITHUB_OUTPUT
+
+      - name: Checkout homebrew-tap
+        uses: actions/checkout@v4
+        with:
+          repository: productdevbook/homebrew-tap
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: homebrew-tap
+
+      - name: Update formula
+        run: |
+          mkdir -p homebrew-tap/Formula
+          cat > homebrew-tap/Formula/devir.rb << EOF
+          class Devir < Formula
+            desc "Dev Runner CLI - Terminal UI for managing dev services"
+            homepage "https://github.com/productdevbook/devir"
+            version "${{ steps.version.outputs.VERSION }}"
+            license "MIT"
+
+            on_macos do
+              on_arm do
+                url "https://github.com/productdevbook/devir/releases/download/v${{ steps.version.outputs.VERSION }}/devir-darwin-arm64.tar.gz"
+                sha256 "${{ steps.sha.outputs.DARWIN_ARM64 }}"
+              end
+              on_intel do
+                url "https://github.com/productdevbook/devir/releases/download/v${{ steps.version.outputs.VERSION }}/devir-darwin-amd64.tar.gz"
+                sha256 "${{ steps.sha.outputs.DARWIN_AMD64 }}"
+              end
+            end
+
+            on_linux do
+              on_arm do
+                url "https://github.com/productdevbook/devir/releases/download/v${{ steps.version.outputs.VERSION }}/devir-linux-arm64.tar.gz"
+                sha256 "${{ steps.sha.outputs.LINUX_ARM64 }}"
+              end
+              on_intel do
+                url "https://github.com/productdevbook/devir/releases/download/v${{ steps.version.outputs.VERSION }}/devir-linux-amd64.tar.gz"
+                sha256 "${{ steps.sha.outputs.LINUX_AMD64 }}"
+              end
+            end
+
+            def install
+              bin.install "devir"
+            end
+
+            test do
+              system "#{bin}/devir", "-h"
+            end
+          end
+          EOF
+
+      - name: Commit and push
+        run: |
+          cd homebrew-tap
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Formula/devir.rb
+          git commit -m "Update devir to ${{ steps.version.outputs.VERSION }}"
+          git push

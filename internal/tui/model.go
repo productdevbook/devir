@@ -1,4 +1,4 @@
-package main
+package tui
 
 import (
 	"time"
@@ -6,50 +6,42 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
-)
 
-// LogEntry represents a single log line
-type LogEntry struct {
-	Time    time.Time
-	Level   string // info, warn, error, debug
-	Service string
-	Message string
-}
+	"devir/internal/runner"
+	"devir/internal/types"
+)
 
 // Model is the Bubble Tea model
 type Model struct {
-	runner     *Runner
-	services   []string
-	activeTab  int // -1 = all, 0+ = specific service
-	viewport   viewport.Model
-	logs       []LogEntry
-	width      int
-	height     int
-	ready      bool
-	quitting   bool
-	searching  bool
+	Runner      *runner.Runner
+	services    []string
+	activeTab   int // -1 = all, 0+ = specific service
+	viewport    viewport.Model
+	logs        []types.LogEntry
+	width       int
+	height      int
+	ready       bool
+	quitting    bool
+	searching   bool
 	searchInput textinput.Model
 	searchQuery string
-	autoScroll bool
+	autoScroll  bool
 }
 
 // tickMsg is sent periodically to update logs
 type tickMsg time.Time
 
-// logMsg is sent when new logs arrive
-type logMsg []LogEntry
-
-// NewModel creates a new Model
-func NewModel(runner *Runner) Model {
+// New creates a new Model
+func New(r *runner.Runner) Model {
 	ti := textinput.New()
 	ti.Placeholder = "Search..."
 	ti.CharLimit = 100
 
 	return Model{
-		runner:      runner,
-		services:    runner.ServiceOrder,
+		Runner:      r,
+		services:    r.ServiceOrder,
 		activeTab:   -1, // All
-		logs:        make([]LogEntry, 0, 1000),
+		logs:        make([]types.LogEntry, 0, 1000),
 		searchInput: ti,
 		autoScroll:  true,
 	}
@@ -57,12 +49,8 @@ func NewModel(runner *Runner) Model {
 
 // Init initializes the model
 func (m Model) Init() tea.Cmd {
-	// Start services
-	m.runner.StartWithChannel()
-
-	return tea.Batch(
-		tickCmd(),
-	)
+	m.Runner.StartWithChannel()
+	return tea.Batch(tickCmd())
 }
 
 func tickCmd() tea.Cmd {
@@ -95,7 +83,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			switch msg.String() {
 			case "q", "ctrl+c":
 				m.quitting = true
-				m.runner.Stop()
+				m.Runner.Stop()
 				return m, tea.Quit
 
 			case "tab":
@@ -130,25 +118,25 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			case "r":
 				if m.activeTab >= 0 && m.activeTab < len(m.services) {
-					m.runner.RestartService(m.services[m.activeTab])
+					m.Runner.RestartService(m.services[m.activeTab])
 				}
 
 			case "up", "k":
-				m.viewport.LineUp(1)
+				m.viewport.ScrollUp(1)
 				m.autoScroll = false
 
 			case "down", "j":
-				m.viewport.LineDown(1)
+				m.viewport.ScrollDown(1)
 				if m.viewport.AtBottom() {
 					m.autoScroll = true
 				}
 
 			case "pgup":
-				m.viewport.HalfViewUp()
+				m.viewport.HalfPageUp()
 				m.autoScroll = false
 
 			case "pgdown":
-				m.viewport.HalfViewDown()
+				m.viewport.HalfPageDown()
 				if m.viewport.AtBottom() {
 					m.autoScroll = true
 				}
@@ -167,8 +155,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 
-		headerHeight := 2  // Tabs
-		footerHeight := 3  // Status + help
+		headerHeight := 2
+		footerHeight := 3
 		viewportHeight := m.height - headerHeight - footerHeight
 
 		if !m.ready {
@@ -181,7 +169,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case tickMsg:
-		// Collect new logs from runner
 		m.collectLogs()
 		m.updateViewport()
 		cmds = append(cmds, tickCmd())
@@ -191,12 +178,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *Model) collectLogs() {
-	// Non-blocking read from log channel
 	for {
 		select {
-		case entry := <-m.runner.LogEntryChan:
+		case entry := <-m.Runner.LogEntryChan:
 			m.logs = append(m.logs, entry)
-			// Keep only last 2000 entries
 			if len(m.logs) > 2000 {
 				m.logs = m.logs[len(m.logs)-2000:]
 			}
@@ -215,20 +200,18 @@ func (m *Model) updateViewport() {
 	}
 }
 
-func (m *Model) getFilteredLogs() []LogEntry {
-	var filtered []LogEntry
+// GetFilteredLogs returns logs filtered by active tab and search query
+func (m *Model) GetFilteredLogs() []types.LogEntry {
+	var filtered []types.LogEntry
 
 	for _, entry := range m.logs {
-		// Filter by active tab
 		if m.activeTab >= 0 {
 			if entry.Service != m.services[m.activeTab] {
 				continue
 			}
 		}
 
-		// Filter by search query
 		if m.searchQuery != "" {
-			// Simple case-insensitive search
 			if !containsIgnoreCase(entry.Message, m.searchQuery) &&
 				!containsIgnoreCase(entry.Service, m.searchQuery) {
 				continue
@@ -244,8 +227,8 @@ func (m *Model) getFilteredLogs() []LogEntry {
 func containsIgnoreCase(s, substr string) bool {
 	return len(s) >= len(substr) &&
 		(s == substr ||
-		 len(substr) == 0 ||
-		 findIgnoreCase(s, substr))
+			len(substr) == 0 ||
+			findIgnoreCase(s, substr))
 }
 
 func findIgnoreCase(s, substr string) bool {

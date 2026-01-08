@@ -1,4 +1,4 @@
-package main
+package tui
 
 import (
 	"fmt"
@@ -48,8 +48,7 @@ func (m Model) renderTabs() string {
 
 	// Service tabs
 	for i, name := range m.services {
-		// Get service state
-		state := m.runner.Services[name]
+		state := m.Runner.Services[name]
 		status := "○"
 		if state != nil && state.Running {
 			status = "●"
@@ -57,7 +56,6 @@ func (m Model) renderTabs() string {
 
 		tabText := fmt.Sprintf("%s%s", name, status)
 
-		// Get service color
 		color := "white"
 		if state != nil {
 			color = state.Service.Color
@@ -77,17 +75,15 @@ func (m Model) renderTabs() string {
 
 func (m Model) renderLogs() string {
 	var b strings.Builder
-	logs := m.getFilteredLogs()
+	logs := m.GetFilteredLogs()
 
 	for _, entry := range logs {
-		// Get service style
 		color := "white"
-		if state, ok := m.runner.Services[entry.Service]; ok {
+		if state, ok := m.Runner.Services[entry.Service]; ok {
 			color = state.Service.Color
 		}
 		serviceStyle := GetServiceStyle(color)
 
-		// Level style
 		var levelStyle lipgloss.Style
 		switch entry.Level {
 		case "error":
@@ -100,7 +96,6 @@ func (m Model) renderLogs() string {
 			levelStyle = InfoStyle
 		}
 
-		// Format: [level] [service] message
 		level := levelStyle.Render(fmt.Sprintf("%-5s", strings.ToUpper(entry.Level)))
 		service := serviceStyle.Render(fmt.Sprintf("[%s]", entry.Service))
 		line := fmt.Sprintf("%s %s %s\n", level, service, entry.Message)
@@ -115,7 +110,7 @@ func (m Model) renderStatusBar() string {
 	var parts []string
 
 	for _, name := range m.services {
-		state := m.runner.Services[name]
+		state := m.Runner.Services[name]
 		port := 0
 		running := false
 		color := "white"
@@ -144,7 +139,6 @@ func (m Model) renderStatusBar() string {
 
 	statusContent := strings.Join(parts, "  │  ")
 
-	// Add search filter indicator
 	if m.searchQuery != "" {
 		statusContent += fmt.Sprintf("  │  Filter: %s", m.searchQuery)
 	}

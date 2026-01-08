@@ -1,0 +1,17 @@
+{
+  "name": "devir",
+  "version": "0.1.5",
+  "private": true,
+  "scripts": {
+    "release": "bumpp"
+  },
+  "devDependencies": {
+    "bumpp": "^10.3.2"
+  },
+  "changelogithub": {
+    "emoji": true,
+    "contributors": true,
+    "capitalize": true,
+    "group": true
+  }
+}

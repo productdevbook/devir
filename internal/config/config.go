@@ -1,4 +1,4 @@
-package main
+package config
 
 import (
 	"fmt"
@@ -8,6 +8,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// Service represents a single service configuration
 type Service struct {
 	Dir   string `yaml:"dir"`
 	Cmd   string `yaml:"cmd"`
@@ -15,15 +16,17 @@ type Service struct {
 	Color string `yaml:"color"`
 }
 
+// Config represents the devir configuration
 type Config struct {
 	Services map[string]Service `yaml:"services"`
 	Defaults []string           `yaml:"defaults"`
 	RootDir  string             `yaml:"-"` // Computed from config file location
 }
 
-func loadConfig(path string) (*Config, error) {
+// Load loads configuration from the given path or searches for devir.yaml
+func Load(path string) (*Config, error) {
 	if path == "" {
-		path = findConfigFile()
+		path = FindConfigFile()
 	}
 
 	if path == "" {
@@ -66,4 +69,21 @@ func loadConfig(path string) (*Config, error) {
 	}
 
 	return &cfg, nil
+}
+
+// FindConfigFile looks for devir.yaml in current dir and parents
+func FindConfigFile() string {
+	dir, _ := os.Getwd()
+	for {
+		path := filepath.Join(dir, "devir.yaml")
+		if _, err := os.Stat(path); err == nil {
+			return path
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break
+		}
+		dir = parent
+	}
+	return ""
 }

@@ -1,5 +1,6 @@
 # Binary
 devir
+dist/
 
 # Go build cache
 *.exe
@@ -12,6 +13,9 @@ devir
 
 # Dependency directories
 vendor/
+node_modules/
+pnpm-lock.yaml
+package-lock.json
 
 # IDE
 .idea/
@@ -27,3 +31,8 @@ Thumbs.db
 # Debug
 debug/
 *.log
+
+# Release artifacts
+*.tar.gz
+*.zip
+checksums.txt

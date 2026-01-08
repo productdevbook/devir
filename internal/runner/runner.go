@@ -1,4 +1,4 @@
-package main
+package runner
 
 import (
 	"bufio"
@@ -9,32 +9,29 @@ import (
 	"regexp"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
+
+	"devir/internal/config"
+	"devir/internal/types"
 )
 
-type LogLine struct {
-	Service   string
-	Text      string
-	Timestamp time.Time
-	IsError   bool
-}
-
+// ServiceState holds the state of a running service
 type ServiceState struct {
 	Name    string
-	Service Service
+	Service config.Service
 	Cmd     *exec.Cmd
 	Running bool
-	Logs    []LogLine
+	Logs    []types.LogLine
 	mu      sync.Mutex
 }
 
+// Runner manages multiple services
 type Runner struct {
-	Config        *Config
+	Config        *config.Config
 	Services      map[string]*ServiceState
 	ServiceOrder  []string // Ordered list of service names
-	LogChan       chan LogLine
-	LogEntryChan  chan LogEntry // For TUI mode
+	LogChan       chan types.LogLine
+	LogEntryChan  chan types.LogEntry // For TUI mode
 	filter        *regexp.Regexp
 	exclude       *regexp.Regexp
 	activeService string // Empty = all, or specific service name
@@ -42,13 +39,14 @@ type Runner struct {
 	mu            sync.RWMutex
 }
 
-func NewRunner(cfg *Config, serviceNames []string, filterPattern, excludePattern string) *Runner {
+// New creates a new Runner
+func New(cfg *config.Config, serviceNames []string, filterPattern, excludePattern string) *Runner {
 	r := &Runner{
 		Config:       cfg,
 		Services:     make(map[string]*ServiceState),
 		ServiceOrder: serviceNames,
-		LogChan:      make(chan LogLine, 1000),
-		LogEntryChan: make(chan LogEntry, 1000),
+		LogChan:      make(chan types.LogLine, 1000),
+		LogEntryChan: make(chan types.LogEntry, 1000),
 	}
 
 	// Compile filter patterns
@@ -65,7 +63,7 @@ func NewRunner(cfg *Config, serviceNames []string, filterPattern, excludePattern
 			r.Services[name] = &ServiceState{
 				Name:    name,
 				Service: svc,
-				Logs:    make([]LogLine, 0, 1000),
+				Logs:    make([]types.LogLine, 0, 1000),
 			}
 		}
 	}
@@ -93,18 +91,16 @@ func (r *Runner) CycleService() string {
 	defer r.mu.Unlock()
 
 	if r.activeService == "" {
-		// Currently showing all, switch to first service
 		if len(r.ServiceOrder) > 0 {
 			r.activeService = r.ServiceOrder[0]
 		}
 	} else {
-		// Find current index and go to next
 		for i, name := range r.ServiceOrder {
 			if name == r.activeService {
 				if i+1 < len(r.ServiceOrder) {
 					r.activeService = r.ServiceOrder[i+1]
 				} else {
-					r.activeService = "" // Back to all
+					r.activeService = ""
 				}
 				break
 			}
@@ -113,32 +109,28 @@ func (r *Runner) CycleService() string {
 	return r.activeService
 }
 
+// Start starts all services in simple mode
 func (r *Runner) Start() {
-	// Start log printer for simple mode
 	go r.printLogs()
-
-	// Start all services
 	for name := range r.Services {
 		go r.startService(name)
 	}
 }
 
-// StartWithChannel starts services in TUI mode (no console printing)
+// StartWithChannel starts services in TUI mode
 func (r *Runner) StartWithChannel() {
 	r.tuiMode = true
-
-	// Start all services
 	for name := range r.Services {
 		go r.startService(name)
 	}
 }
 
-// CheckPorts checks if any service ports are in use and returns them
+// CheckPorts checks if any service ports are in use
 func (r *Runner) CheckPorts() map[string]int {
 	inUse := make(map[string]int)
 	for name, state := range r.Services {
 		port := state.Service.Port
-		if port > 0 && isPortInUse(port) {
+		if port > 0 && IsPortInUse(port) {
 			inUse[name] = port
 		}
 	}
@@ -147,49 +139,20 @@ func (r *Runner) CheckPorts() map[string]int {
 
 // KillPort kills the process using the given port
 func (r *Runner) KillPort(port int) error {
-	pid, err := getPortPID(port)
+	pid, err := GetPortPID(port)
 	if err != nil {
 		return err
 	}
 	if pid > 0 {
-		return syscall.Kill(pid, syscall.SIGTERM)
+		return KillProcess(pid)
 	}
 	return nil
 }
 
-func isPortInUse(port int) bool {
-	pid, _ := getPortPID(port)
-	return pid > 0
-}
-
-func getPortPID(port int) (int, error) {
-	// Use lsof to find process using port
-	cmd := exec.Command("lsof", "-ti", fmt.Sprintf(":%d", port))
-	output, err := cmd.Output()
-	if err != nil {
-		return 0, nil // No process using port
-	}
-
-	// Parse PID from output
-	pidStr := strings.TrimSpace(string(output))
-	if pidStr == "" {
-		return 0, nil
-	}
-
-	// May have multiple PIDs, take first
-	lines := strings.Split(pidStr, "\n")
-	if len(lines) > 0 {
-		var pid int
-		fmt.Sscanf(lines[0], "%d", &pid)
-		return pid, nil
-	}
-	return 0, nil
-}
-
+// Stop stops all services
 func (r *Runner) Stop() {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-
 	for _, state := range r.Services {
 		r.stopService(state)
 	}
@@ -207,7 +170,6 @@ func (r *Runner) startService(name string) {
 	svc := state.Service
 	workDir := filepath.Join(r.Config.RootDir, svc.Dir)
 
-	// Parse command
 	parts := strings.Fields(svc.Cmd)
 	if len(parts) == 0 {
 		return
@@ -215,7 +177,6 @@ func (r *Runner) startService(name string) {
 
 	cmd := exec.Command(parts[0], parts[1:]...)
 	cmd.Dir = workDir
-	// CI mode to disable terminal control characters from Nuxt/Vite
 	cmd.Env = append(os.Environ(),
 		"CI=true",
 		"TERM=dumb",
@@ -223,10 +184,8 @@ func (r *Runner) startService(name string) {
 		"FORCE_COLOR=0",
 	)
 
-	// Set process group for proper cleanup
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	SetSysProcAttr(cmd)
 
-	// Create pipes
 	stdout, _ := cmd.StdoutPipe()
 	stderr, _ := cmd.StderrPipe()
 
@@ -235,9 +194,8 @@ func (r *Runner) startService(name string) {
 	state.Running = true
 	state.mu.Unlock()
 
-	// Start command
 	if err := cmd.Start(); err != nil {
-		r.LogChan <- LogLine{
+		r.LogChan <- types.LogLine{
 			Service:   name,
 			Text:      "Failed to start: " + err.Error(),
 			Timestamp: time.Now(),
@@ -246,38 +204,35 @@ func (r *Runner) startService(name string) {
 		return
 	}
 
-	r.LogChan <- LogLine{
+	r.LogChan <- types.LogLine{
 		Service:   name,
 		Text:      "Started (port " + formatPort(svc.Port) + ")",
 		Timestamp: time.Now(),
 	}
 
-	// Read stdout
 	go func() {
 		scanner := bufio.NewScanner(stdout)
-		scanner.Buffer(make([]byte, 0, 1024*1024), 1024*1024) // 1MB buffer
+		scanner.Buffer(make([]byte, 0, 1024*1024), 1024*1024)
 		for scanner.Scan() {
 			r.processLine(name, scanner.Text(), false)
 		}
 	}()
 
-	// Read stderr
 	go func() {
 		scanner := bufio.NewScanner(stderr)
-		scanner.Buffer(make([]byte, 0, 1024*1024), 1024*1024) // 1MB buffer
+		scanner.Buffer(make([]byte, 0, 1024*1024), 1024*1024)
 		for scanner.Scan() {
 			r.processLine(name, scanner.Text(), true)
 		}
 	}()
 
-	// Wait for exit
-	cmd.Wait()
+	_ = cmd.Wait()
 
 	state.mu.Lock()
 	state.Running = false
 	state.mu.Unlock()
 
-	r.LogChan <- LogLine{
+	r.LogChan <- types.LogLine{
 		Service:   name,
 		Text:      "Stopped",
 		Timestamp: time.Now(),
@@ -289,13 +244,13 @@ func (r *Runner) stopService(state *ServiceState) {
 	defer state.mu.Unlock()
 
 	if state.Cmd != nil && state.Cmd.Process != nil {
-		// Kill process group
-		syscall.Kill(-state.Cmd.Process.Pid, syscall.SIGTERM)
+		KillProcessGroup(state.Cmd.Process.Pid)
 		time.Sleep(100 * time.Millisecond)
-		syscall.Kill(-state.Cmd.Process.Pid, syscall.SIGKILL)
+		ForceKillProcessGroup(state.Cmd.Process.Pid)
 	}
 }
 
+// RestartService restarts a specific service
 func (r *Runner) RestartService(name string) {
 	r.mu.RLock()
 	state := r.Services[name]
@@ -310,21 +265,17 @@ func (r *Runner) RestartService(name string) {
 	go r.startService(name)
 }
 
-// ANSI escape sequence pattern
 var ansiPattern = regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)
 
 func (r *Runner) processLine(service, text string, isError bool) {
-	// Clean ANSI codes and control characters
 	text = ansiPattern.ReplaceAllString(text, "")
 	text = strings.ReplaceAll(text, "\r", "")
 	text = strings.TrimSpace(text)
 
-	// Skip empty lines
 	if text == "" {
 		return
 	}
 
-	// Apply filters
 	if r.exclude != nil && r.exclude.MatchString(text) {
 		return
 	}
@@ -332,7 +283,6 @@ func (r *Runner) processLine(service, text string, isError bool) {
 		return
 	}
 
-	// Determine log level from text
 	level := "info"
 	lowerText := strings.ToLower(text)
 	if strings.Contains(lowerText, "error") || strings.Contains(lowerText, "fail") || isError {
@@ -343,14 +293,13 @@ func (r *Runner) processLine(service, text string, isError bool) {
 		level = "debug"
 	}
 
-	line := LogLine{
+	line := types.LogLine{
 		Service:   service,
 		Text:      text,
 		Timestamp: time.Now(),
 		IsError:   isError,
 	}
 
-	// Store in service logs
 	r.mu.RLock()
 	state := r.Services[service]
 	r.mu.RUnlock()
@@ -358,17 +307,14 @@ func (r *Runner) processLine(service, text string, isError bool) {
 	if state != nil {
 		state.mu.Lock()
 		state.Logs = append(state.Logs, line)
-		// Keep only last 1000 lines
 		if len(state.Logs) > 1000 {
 			state.Logs = state.Logs[len(state.Logs)-1000:]
 		}
 		state.mu.Unlock()
 	}
 
-	// Send to appropriate channel
 	if r.tuiMode {
-		// TUI mode - send LogEntry
-		entry := LogEntry{
+		entry := types.LogEntry{
 			Time:    time.Now(),
 			Level:   level,
 			Service: service,
@@ -377,20 +323,16 @@ func (r *Runner) processLine(service, text string, isError bool) {
 		select {
 		case r.LogEntryChan <- entry:
 		default:
-			// Channel full, drop
 		}
 	} else {
-		// Simple mode - send LogLine
 		select {
 		case r.LogChan <- line:
 		default:
-			// Channel full, drop oldest
 		}
 	}
 }
 
 func (r *Runner) printLogs() {
-	// Color codes
 	colors := map[string]string{
 		"blue":    "\033[1;34m",
 		"green":   "\033[1;32m",
@@ -409,7 +351,6 @@ func (r *Runner) printLogs() {
 		active := r.activeService
 		r.mu.RUnlock()
 
-		// Filter by active service
 		if active != "" && line.Service != active {
 			continue
 		}
@@ -441,24 +382,17 @@ func formatPort(port int) string {
 	return fmt.Sprintf("%d", port)
 }
 
-// ServiceInfo for TUI
-type ServiceInfo struct {
-	Name    string
-	Color   string
-	Running bool
-	Logs    []LogLine
-}
-
-func (r *Runner) GetServices() map[string]ServiceInfo {
+// GetServices returns service info for TUI
+func (r *Runner) GetServices() map[string]types.ServiceInfo {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	result := make(map[string]ServiceInfo)
+	result := make(map[string]types.ServiceInfo)
 	for name, state := range r.Services {
 		state.mu.Lock()
-		logs := make([]LogLine, len(state.Logs))
+		logs := make([]types.LogLine, len(state.Logs))
 		copy(logs, state.Logs)
-		result[name] = ServiceInfo{
+		result[name] = types.ServiceInfo{
 			Name:    name,
 			Color:   state.Service.Color,
 			Running: state.Running,
@@ -469,6 +403,7 @@ func (r *Runner) GetServices() map[string]ServiceInfo {
 	return result
 }
 
+// GetServiceNames returns list of service names
 func (r *Runner) GetServiceNames() []string {
 	r.mu.RLock()
 	defer r.mu.RUnlock()

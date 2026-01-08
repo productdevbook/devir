@@ -2,6 +2,12 @@
 
 A terminal UI for managing multiple dev services with colored logs, filtering, and MCP integration.
 
+[![CI](https://github.com/productdevbook/devir/actions/workflows/ci.yml/badge.svg)](https://github.com/productdevbook/devir/actions/workflows/ci.yml)
+[![Release](https://github.com/productdevbook/devir/actions/workflows/release.yml/badge.svg)](https://github.com/productdevbook/devir/releases)
+[![Go Report Card](https://goreportcard.com/badge/github.com/productdevbook/devir)](https://goreportcard.com/report/github.com/productdevbook/devir)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Go Version](https://img.shields.io/github/go-mod/go-version/productdevbook/devir)](https://go.dev/)
+
 ## Features
 
 - **Bubble Tea TUI** - Interactive terminal UI with tabs, viewport, and status bar
@@ -13,9 +19,42 @@ A terminal UI for managing multiple dev services with colored logs, filtering, a
 
 ## Installation
 
+### Quick Install (Recommended)
+
 ```bash
-cd services/devir
-go build -o ../../devir .
+curl -fsSL https://raw.githubusercontent.com/productdevbook/devir/master/install.sh | bash
+```
+
+### Homebrew (macOS/Linux)
+
+```bash
+brew install productdevbook/tap/devir
+```
+
+### Manual Download
+
+Download from [Releases](https://github.com/productdevbook/devir/releases)
+
+| Platform | Download |
+|----------|----------|
+| macOS (Apple Silicon) | [devir-darwin-arm64.tar.gz](https://github.com/productdevbook/devir/releases/latest/download/devir-darwin-arm64.tar.gz) |
+| macOS (Intel) | [devir-darwin-amd64.tar.gz](https://github.com/productdevbook/devir/releases/latest/download/devir-darwin-amd64.tar.gz) |
+| Linux (x64) | [devir-linux-amd64.tar.gz](https://github.com/productdevbook/devir/releases/latest/download/devir-linux-amd64.tar.gz) |
+| Linux (ARM64) | [devir-linux-arm64.tar.gz](https://github.com/productdevbook/devir/releases/latest/download/devir-linux-arm64.tar.gz) |
+| Windows (x64) | [devir-windows-amd64.zip](https://github.com/productdevbook/devir/releases/latest/download/devir-windows-amd64.zip) |
+
+### From Source
+
+```bash
+go install github.com/productdevbook/devir@latest
+```
+
+Or build manually:
+
+```bash
+git clone https://github.com/productdevbook/devir.git
+cd devir
+make build
 ```
 
 ## Usage
@@ -24,20 +63,20 @@ go build -o ../../devir .
 
 ```bash
 # Start all default services
-./devir
+devir
 
 # Start specific services
-./devir admin server
+devir admin server
 
 # With filters
-./devir --filter "error"
-./devir --exclude "hmr"
+devir --filter "error"
+devir --exclude "hmr"
 ```
 
 ### MCP Server Mode
 
 ```bash
-./devir --mcp
+devir --mcp
 ```
 
 ### Keyboard Shortcuts
@@ -92,7 +131,7 @@ Add to your project's `.mcp.json`:
 {
   "mcpServers": {
     "devir": {
-      "command": "/path/to/devir",
+      "command": "devir",
       "args": ["--mcp", "-c", "/path/to/devir.yaml"]
     }
   }
@@ -108,6 +147,24 @@ Add to your project's `.mcp.json`:
 | `devir_status` | Get service status |
 | `devir_logs` | Get recent logs |
 | `devir_restart` | Restart a service |
+| `devir_check_ports` | Check if ports are in use |
+| `devir_kill_ports` | Kill processes on ports |
+
+## Development
+
+```bash
+# Build
+make build
+
+# Build for all platforms
+make build-all
+
+# Run tests
+make test
+
+# Lint
+make lint
+```
 
 ## Dependencies
 

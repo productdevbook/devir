@@ -4,17 +4,25 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"path/filepath"
 
 	tea "github.com/charmbracelet/bubbletea"
+
+	"devir/internal/config"
+	"devir/internal/mcp"
+	"devir/internal/runner"
+	"devir/internal/tui"
 )
 
+// Version is set by -ldflags at build time
+var Version = "dev"
+
 var (
-	configFile string
-	filter     string
-	exclude    string
-	showHelp   bool
-	mcpMode    bool
+	configFile  string
+	filter      string
+	exclude     string
+	showHelp    bool
+	showVersion bool
+	mcpMode     bool
 )
 
 func init() {
@@ -22,19 +30,25 @@ func init() {
 	flag.StringVar(&filter, "filter", "", "Filter logs by pattern")
 	flag.StringVar(&exclude, "exclude", "", "Exclude logs matching pattern")
 	flag.BoolVar(&showHelp, "h", false, "Show help")
+	flag.BoolVar(&showVersion, "v", false, "Show version")
 	flag.BoolVar(&mcpMode, "mcp", false, "Run as MCP server")
 }
 
 func main() {
 	flag.Parse()
 
+	if showVersion {
+		fmt.Printf("devir %s\n", Version)
+		return
+	}
+
 	if showHelp {
 		printHelp()
 		return
 	}
 
-	// Find config file
-	cfg, err := loadConfig(configFile)
+	// Load config
+	cfg, err := config.Load(configFile)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Config error: %v\n", err)
 		os.Exit(1)
@@ -42,7 +56,7 @@ func main() {
 
 	// MCP mode
 	if mcpMode {
-		mcpServer := NewMCPServer(cfg)
+		mcpServer := mcp.New(cfg, Version)
 		if err := mcpServer.Run(); err != nil {
 			fmt.Fprintf(os.Stderr, "MCP error: %v\n", err)
 			os.Exit(1)
@@ -50,9 +64,7 @@ func main() {
 		return
 	}
 
-	// TUI mode continues below...
-
-	// Get services to run from args or defaults
+	// TUI mode
 	services := flag.Args()
 	if len(services) == 0 {
 		services = cfg.Defaults
@@ -72,10 +84,10 @@ func main() {
 	}
 
 	// Create runner
-	runner := NewRunner(cfg, services, filter, exclude)
+	r := runner.New(cfg, services, filter, exclude)
 
 	// Check for ports in use
-	portsInUse := runner.CheckPorts()
+	portsInUse := r.CheckPorts()
 	if len(portsInUse) > 0 {
 		fmt.Println("\n⚠️  Aşağıdaki portlar zaten kullanımda:")
 		for name, port := range portsInUse {
@@ -84,11 +96,11 @@ func main() {
 		fmt.Print("\nBu portları kapatıp devam edilsin mi? [y/N] ")
 
 		var answer string
-		fmt.Scanln(&answer)
+		_, _ = fmt.Scanln(&answer)
 
 		if answer == "y" || answer == "Y" {
 			for name, port := range portsInUse {
-				if err := runner.KillPort(port); err != nil {
+				if err := r.KillPort(port); err != nil {
 					fmt.Printf("   ✗ %s (port %d) kapatılamadı: %v\n", name, port, err)
 				} else {
 					fmt.Printf("   ✓ %s (port %d) kapatıldı\n", name, port)
@@ -100,7 +112,7 @@ func main() {
 
 	// Start TUI
 	p := tea.NewProgram(
-		NewModel(runner),
+		tui.New(r),
 		tea.WithAltScreen(),
 		tea.WithMouseCellMotion(),
 	)
@@ -112,7 +124,7 @@ func main() {
 }
 
 func printHelp() {
-	fmt.Println(`devir - Dev Runner CLI
+	fmt.Printf(`devir %s - Dev Runner CLI
 
 Usage:
   devir [options] [services...]
@@ -121,6 +133,7 @@ Options:
   -c <file>     Config file path (default: devir.yaml)
   -filter <p>   Show only logs matching pattern
   -exclude <p>  Hide logs matching pattern
+  -v            Show version
   -h            Show this help
 
 Examples:
@@ -136,22 +149,6 @@ Keyboard Shortcuts:
   /            Search
   r            Restart current service
   j/k          Scroll up/down
-  q            Quit`)
-}
-
-func findConfigFile() string {
-	// Look for config in current dir and parents
-	dir, _ := os.Getwd()
-	for {
-		path := filepath.Join(dir, "devir.yaml")
-		if _, err := os.Stat(path); err == nil {
-			return path
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			break
-		}
-		dir = parent
-	}
-	return ""
+  q            Quit
+`, Version)
 }
