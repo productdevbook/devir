@@ -15,7 +15,8 @@
       "Bash(golangci-lint:*)",
       "Bash(go list:*)",
       "Bash(make test:*)",
-      "Bash(make lint:*)"
+      "Bash(make lint:*)",
+      "WebSearch"
     ]
   },
   "enableAllProjectMcpServers": true,
