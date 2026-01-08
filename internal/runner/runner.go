@@ -607,6 +607,21 @@ func (r *Runner) RestartService(name string) {
 	go r.startService(name)
 }
 
+// ClearLogs clears logs for a specific service or all services
+func (r *Runner) ClearLogs(service string) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	for name, state := range r.Services {
+		if service != "" && name != service {
+			continue
+		}
+		state.Mu.Lock()
+		state.Logs = nil
+		state.Mu.Unlock()
+	}
+}
+
 var ansiPattern = regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)
 
 func (r *Runner) processLine(service, text string, isError bool) {

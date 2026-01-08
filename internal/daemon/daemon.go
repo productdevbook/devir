@@ -228,6 +228,8 @@ func (d *Daemon) handleMessage(c *clientConn, msg Message) {
 		d.handleStatus(c)
 	case MsgLogs:
 		d.handleLogs(c, msg)
+	case MsgClearLogs:
+		d.handleClearLogs(c, msg)
 	case MsgCheckPorts:
 		d.handleCheckPorts(c)
 	case MsgKillPorts:
@@ -458,6 +460,21 @@ func (d *Daemon) handleLogs(c *clientConn, msg Message) {
 	}
 
 	resp, _ := NewMessage(MsgLogsResponse, LogsResponse{Logs: logs})
+	c.send(resp)
+}
+
+func (d *Daemon) handleClearLogs(c *clientConn, msg Message) {
+	req, err := ParsePayload[ClearLogsRequest](msg)
+	if err != nil {
+		d.sendError(c, err.Error())
+		return
+	}
+
+	if d.runner != nil {
+		d.runner.ClearLogs(req.Service)
+	}
+
+	resp, _ := NewMessage(MsgLogsCleared, struct{}{})
 	c.send(resp)
 }
 

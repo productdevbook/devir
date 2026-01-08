@@ -185,6 +185,6 @@ func (m Model) renderHelp() string {
 		return HelpStyle.Render(m.statusMsg)
 	}
 
-	help := "Tab: switch │ 1-9: select │ a: all │ /: search │ c: copy │ r: restart │ q: quit"
+	help := "Tab: switch │ 1-9: select │ a: all │ /: search │ c: copy │ x: clear │ r: restart │ q: quit"
 	return HelpStyle.Render(help)
 }

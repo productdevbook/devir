@@ -193,6 +193,15 @@ func (c *Client) KillPorts(ports []int) error {
 	return c.Send(msg)
 }
 
+// ClearLogs sends a clear logs request
+func (c *Client) ClearLogs(service string) error {
+	msg, err := NewMessage(MsgClearLogs, ClearLogsRequest{Service: service})
+	if err != nil {
+		return err
+	}
+	return c.Send(msg)
+}
+
 // WaitForResponse waits for a specific response type
 func (c *Client) WaitForResponse(msgType string, timeout time.Duration) (Message, error) {
 	deadline := time.Now().Add(timeout)
@@ -296,4 +305,14 @@ func (c *Client) KillPortsSync(ports []int, timeout time.Duration) (KillPortsRes
 	}
 
 	return ParsePayload[KillPortsResponse](msg)
+}
+
+// ClearLogsSync clears logs synchronously
+func (c *Client) ClearLogsSync(service string, timeout time.Duration) error {
+	if err := c.ClearLogs(service); err != nil {
+		return err
+	}
+
+	_, err := c.WaitForResponse(MsgLogsCleared, timeout)
+	return err
 }

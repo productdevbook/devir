@@ -78,6 +78,11 @@ func (m *Server) registerTools() {
 		Name:        "devir_restart",
 		Description: "Restart a specific service",
 	}, m.handleRestart)
+
+	mcp.AddTool(m.server, &mcp.Tool{
+		Name:        "devir_clear_logs",
+		Description: "Clear logs from services",
+	}, m.handleClearLogs)
 }
 
 // Run starts the MCP server
@@ -171,6 +176,15 @@ type RestartInput struct {
 type RestartOutput struct {
 	Status  string `json:"status"`
 	Service string `json:"service"`
+}
+
+type ClearLogsInput struct {
+	Service string `json:"service,omitempty" jsonschema:"Service name to clear logs for. If empty clears all logs."`
+}
+
+type ClearLogsOutput struct {
+	Status  string `json:"status"`
+	Service string `json:"service,omitempty"`
 }
 
 // Handlers
@@ -296,6 +310,17 @@ func (m *Server) handleRestart(ctx context.Context, req *mcp.CallToolRequest, in
 
 	return nil, RestartOutput{
 		Status:  "restarted",
+		Service: input.Service,
+	}, nil
+}
+
+func (m *Server) handleClearLogs(ctx context.Context, req *mcp.CallToolRequest, input ClearLogsInput) (*mcp.CallToolResult, ClearLogsOutput, error) {
+	if err := m.client.ClearLogsSync(input.Service, 5*time.Second); err != nil {
+		return nil, ClearLogsOutput{}, err
+	}
+
+	return nil, ClearLogsOutput{
+		Status:  "cleared",
 		Service: input.Service,
 	}, nil
 }

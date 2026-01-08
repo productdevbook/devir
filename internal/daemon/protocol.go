@@ -13,19 +13,21 @@ const (
 	MsgRestart    = "restart"
 	MsgStatus     = "status"
 	MsgLogs       = "logs"
+	MsgClearLogs  = "clear_logs"
 	MsgCheckPorts = "check_ports"
 	MsgKillPorts  = "kill_ports"
 
 	// Daemon → Client
-	MsgStarted        = "started"
-	MsgStopped        = "stopped"
-	MsgRestarted      = "restarted"
-	MsgStatusResponse = "status_response"
-	MsgLogsResponse   = "logs_response"
-	MsgPortsResponse  = "ports_response"
-	MsgKillResponse   = "kill_response"
-	MsgLogEntry       = "log_entry" // Broadcast to all clients
-	MsgError          = "error"
+	MsgStarted         = "started"
+	MsgStopped         = "stopped"
+	MsgRestarted       = "restarted"
+	MsgStatusResponse  = "status_response"
+	MsgLogsResponse    = "logs_response"
+	MsgLogsCleared     = "logs_cleared"
+	MsgPortsResponse   = "ports_response"
+	MsgKillResponse    = "kill_response"
+	MsgLogEntry        = "log_entry" // Broadcast to all clients
+	MsgError           = "error"
 )
 
 // Message is the wire format for daemon communication
@@ -75,6 +77,11 @@ type LogsRequest struct {
 // KillPortsRequest requests killing processes on ports
 type KillPortsRequest struct {
 	Ports []int `json:"ports"`
+}
+
+// ClearLogsRequest requests clearing logs
+type ClearLogsRequest struct {
+	Service string `json:"service,omitempty"`
 }
 
 // --- Response payloads (Daemon → Client) ---

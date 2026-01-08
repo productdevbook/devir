@@ -182,6 +182,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				// Copy filtered logs to clipboard
 				cmds = append(cmds, m.copyLogsToClipboard())
 
+			case "x":
+				// Clear logs
+				service := ""
+				if m.activeTab >= 0 && m.activeTab < len(m.services) {
+					service = m.services[m.activeTab]
+				}
+				if m.clientMode {
+					_ = m.client.ClearLogs(service)
+				} else {
+					m.Runner.ClearLogs(service)
+				}
+				m.clearLocalLogs(service)
+
 			case "up", "k":
 				m.viewport.ScrollUp(1)
 				m.autoScroll = false
@@ -408,6 +421,22 @@ func equalIgnoreCase(a, b string) bool {
 		}
 	}
 	return true
+}
+
+// clearLocalLogs clears logs from the local buffer
+func (m *Model) clearLocalLogs(service string) {
+	if service == "" {
+		m.logs = nil
+	} else {
+		filtered := make([]types.LogEntry, 0)
+		for _, log := range m.logs {
+			if log.Service != service {
+				filtered = append(filtered, log)
+			}
+		}
+		m.logs = filtered
+	}
+	m.updateViewport()
 }
 
 // copyLogsToClipboard copies filtered logs to system clipboard
