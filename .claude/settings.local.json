@@ -11,7 +11,8 @@
       "WebFetch(domain:github.com)",
       "Bash(tree:*)",
       "Bash(./devir:*)",
-      "Bash(gofmt:*)"
+      "Bash(gofmt:*)",
+      "Bash(golangci-lint:*)"
     ]
   },
   "enableAllProjectMcpServers": true,
