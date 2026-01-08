@@ -23,6 +23,7 @@ A terminal UI for managing multiple dev services with colored logs, filtering, a
 - **Port Management** - Detects ports in use and offers to kill them
 - **MCP Server** - Integrate with Claude Code via Model Context Protocol
 - **Daemon Mode** - Multiple TUI/MCP clients can connect to the same services
+- **Chrome DevTools Extension** - View logs in browser DevTools panel
 
 ## Installation
 
@@ -348,6 +349,48 @@ Add to your project's `.mcp.json`:
   ]
 }
 ```
+
+## Chrome DevTools Extension
+
+View devir logs directly in Chrome DevTools. The extension connects via WebSocket to the devir daemon.
+
+### Installation
+
+Download from [Releases](https://github.com/productdevbook/devir/releases) and extract `devir-extension.zip`.
+
+1. Open `chrome://extensions`
+2. Enable "Developer mode"
+3. Click "Load unpacked"
+4. Select the extracted extension folder
+
+### Usage
+
+1. Start devir with WebSocket enabled (default port 9222):
+   ```bash
+   devir
+   ```
+
+2. Open Chrome DevTools (F12) on any page
+3. Click the "Devir" tab
+
+### Features
+
+- **Real-time logs** - Logs stream as they happen
+- **Service tabs** - Filter logs by service
+- **Level filtering** - Filter by error, warn, info, debug
+- **Search** - Filter logs by text
+- **Service controls** - Start, Stop, Restart services directly from DevTools
+- **Status indicators** - Green/yellow/red dots show service status
+
+### WebSocket Port
+
+By default, devir starts WebSocket server on port 9222. To use a different port:
+
+```bash
+devir --ws-port 9333
+```
+
+> **Note:** If you change the port, you'll need to modify the extension's `useWebSocket.ts` to match.
 
 ## Development
 
