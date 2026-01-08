@@ -14,6 +14,7 @@ var (
 	filter     string
 	exclude    string
 	showHelp   bool
+	mcpMode    bool
 )
 
 func init() {
@@ -21,6 +22,7 @@ func init() {
 	flag.StringVar(&filter, "filter", "", "Filter logs by pattern")
 	flag.StringVar(&exclude, "exclude", "", "Exclude logs matching pattern")
 	flag.BoolVar(&showHelp, "h", false, "Show help")
+	flag.BoolVar(&mcpMode, "mcp", false, "Run as MCP server")
 }
 
 func main() {
@@ -37,6 +39,18 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Config error: %v\n", err)
 		os.Exit(1)
 	}
+
+	// MCP mode
+	if mcpMode {
+		mcpServer := NewMCPServer(cfg)
+		if err := mcpServer.Run(); err != nil {
+			fmt.Fprintf(os.Stderr, "MCP error: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+
+	// TUI mode continues below...
 
 	// Get services to run from args or defaults
 	services := flag.Args()
